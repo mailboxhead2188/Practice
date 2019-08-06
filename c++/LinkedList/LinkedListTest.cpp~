@@ -1,0 +1,9 @@
+#include <iostream.h>
+
+
+class Node
+{
+  public Node *Next;
+		   public int Data;
+}
+

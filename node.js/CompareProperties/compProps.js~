@@ -1,0 +1,5 @@
+function compareProperties(object1, object2) {
+    foreach(var obj1Prop in object1.properties) {
+	
+    }
+};

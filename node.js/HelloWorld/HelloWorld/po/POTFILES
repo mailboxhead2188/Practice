@@ -1,0 +1,7 @@
+data/org.gnome.Helloworld.desktop.in
+data/org.gnome.Helloworld.appdata.xml.in
+data/org.gnome.Helloworld.gschema.xml
+src/helloworld-window.ui
+src/main.c
+src/helloworld-window.c
+

@@ -1,0 +1,337 @@
+#include <iostream>
+
+using namespace std;
+
+
+class TreeNode
+{
+public:
+  TreeNode *Left;
+  TreeNode *Right;
+  int Data;
+
+  TreeNode(int data)
+  {
+    Left = NULL;
+    Right = NULL;
+    Data = data;
+  }
+};
+
+
+
+class Tree
+{
+private:
+  TreeNode *root;
+
+  void AddNodePrivate(TreeNode *currNode, TreeNode *newNode)
+  {
+    
+    if (newNode->Data > currNode->Data)
+      {
+	
+	if (currNode->Right == NULL)
+	  {
+	    currNode->Right = newNode;
+	    return;
+	  }
+	else
+	  {
+	    AddNodePrivate(currNode->Right, newNode);
+	  }
+      }
+
+    if (newNode->Data < currNode->Data )
+      {
+	if (currNode->Left == NULL)
+	  {
+	    currNode->Left = newNode;
+	    return;
+	  }
+	else
+	  {
+	    AddNodePrivate(currNode->Left, newNode);
+	  }
+      }
+
+    root = Balance(root);
+  }
+
+  void PrintOutInOrderPrivate(TreeNode *node)
+  {
+    if (node == NULL)
+      {
+	return;
+      }
+
+    PrintOutInOrderPrivate(node->Left);
+    cout << node->Data << " ";
+    PrintOutInOrderPrivate(node->Right);
+  }
+
+  void PrintOutPreOrderPrivate(TreeNode *node)
+  {
+    if (node == NULL)
+      {
+	return;
+      }
+
+    cout << node->Data << " ";
+    PrintOutPreOrderPrivate(node->Left);
+    PrintOutPreOrderPrivate(node->Right);
+  }
+
+  void PrintOutPostOrderPrivate(TreeNode *node)
+  {
+    if (node == NULL)
+      {
+	return;
+      }
+
+    PrintOutPostOrderPrivate(node->Left);
+    PrintOutPostOrderPrivate(node->Right);
+    cout << node->Data << " ";
+  }
+
+  void DeletePostOrder(TreeNode *node)
+  {
+    if (node == NULL)
+      {
+	return;
+      }
+
+    DeletePostOrder(node->Left);
+    DeletePostOrder(node->Right);
+    delete node;
+  }
+
+  int HeightPrivate(TreeNode *node)
+  {
+    int currHeight = 0;
+
+    if (node != NULL)
+      {
+	int l_height = HeightPrivate(node->Left);
+	int r_height = HeightPrivate(node->Right);
+	int max_height = max(l_height, r_height);
+	currHeight = max_height + 1;
+      }
+
+    return currHeight;
+  }
+
+  int Difference(TreeNode *node)
+  {
+    int l_height = HeightPrivate(node->Left);
+    int r_height = HeightPrivate(node->Right);
+    int diff = l_height - r_height;
+    return diff;
+  }
+
+  TreeNode* RightRightRotate(TreeNode *node)
+  {
+    TreeNode *t = node->Right;
+    node->Right = t->Left;
+    t->Left = node;
+    return t;
+  }
+
+  TreeNode *LeftLeftRotate(TreeNode *node)
+  {
+    TreeNode *t = node->Left;
+    node->Left = t->Right;
+    t->Right = node;
+    return t;
+  }
+
+  TreeNode *LeftRightRotate(TreeNode *node)
+  {
+    TreeNode *t = node->Left;
+    node->Left = RightRightRotate(t);
+    return LeftLeftRotate(node);
+  }
+
+  TreeNode *RightLeftRotate(TreeNode *node)
+  {
+    TreeNode *t = node->Right;
+    node->Right = LeftLeftRotate(t);
+    return RightRightRotate(node);
+  }
+
+  TreeNode *Balance(TreeNode *node)
+  {
+    int diff = Difference(node);
+    if (diff > 1)
+      {
+	if (Difference(node->Left) > 0)
+	  {
+	    node = LeftLeftRotate(node);
+	  }
+	else
+	  {
+	    node = LeftRightRotate(node);
+	  }
+      }
+    else if (diff < -1)
+      {
+	if (Difference(node->Right) > 0)
+	  {
+	    node = RightLeftRotate(node);
+	  }
+	else
+	  {
+	    node = RightRightRotate(node);
+	  }
+      }
+
+    return node;
+  }
+
+  void PrettyPrintPrivate(TreeNode *node, int l)
+  {
+    int i;
+    if (node != NULL)
+      {
+	PrettyPrintPrivate(node->Right, l+1);
+	cout << " ";
+	if (node == root)
+	  {
+	    cout << "Root -> ";
+	  }
+	for(i = 0; (i < l) && (node != root); i++)
+	  {
+	    cout << " ";
+	  }
+	cout << node->Data;
+	PrettyPrintPrivate(node->Left, l+1);
+      }
+  }
+
+
+  TreeNode *CreateLinkedListPrivate(TreeNode *node)
+  {
+    if (node == NULL)
+      {
+	cout << "End of the line, returning NULL" << endl;
+	return node;
+      }
+
+    if (node->Left != NULL)
+      {
+	cout << "Traversing left node" << endl;
+	TreeNode *temp = CreateLinkedListPrivate(node->Left);
+	for (; temp->Right != NULL; temp = temp->Right);
+	temp->Right = node;
+	node->Left = temp;
+      }
+
+    if (node->Right != NULL)
+      {
+	cout << "Traversing right node" << endl;
+	TreeNode *temp = CreateLinkedListPrivate(node->Right);
+	for (; temp->Left != NULL; temp = temp->Left);
+	temp->Left = node;
+	node->Right = temp;
+      }
+
+    return node;
+  }
+
+  
+public:
+  Tree()
+  {
+    root = NULL;
+  }
+
+  ~Tree()
+  {
+    DeletePostOrder(root);
+  }
+
+  void AddNode(TreeNode *node)
+  {
+    if (root == NULL)
+      {
+	root = node;
+	return;
+      }
+
+    AddNodePrivate(root, node);
+  }
+
+  void PrintOutInOrder()
+  {
+    PrintOutInOrderPrivate(root);
+    cout << endl;
+  }
+
+  void PrintOutPreOrder()
+  {
+    PrintOutPreOrderPrivate(root);
+    cout << endl;
+  }
+
+  void PrintOutPostOrder()
+  {
+    PrintOutPostOrderPrivate(root);
+    cout << endl;
+  }
+
+  int Height()
+  {
+    return HeightPrivate(root);
+  }
+
+  void PrettyPrint()
+  {
+    PrettyPrintPrivate(root, 1);
+  }
+
+  TreeNode *CreateLinkedList()
+  {
+    return CreateLinkedListPrivate(root);
+  }
+};
+
+
+int main(int argc, char **argv)
+{
+  Tree tr;
+
+  TreeNode *newNode = new TreeNode(1);
+  tr.AddNode(newNode);
+  newNode = new TreeNode(3);
+  tr.AddNode(newNode);
+  newNode = new TreeNode(2);
+  tr.AddNode(newNode);
+  newNode = new TreeNode(4);
+  tr.AddNode(newNode);
+  newNode = new TreeNode(1);
+  tr.AddNode(newNode);
+  newNode = new TreeNode(5);
+  tr.AddNode(newNode);
+
+  cout << "In Order Traversal" << endl;
+  tr.PrintOutInOrder();
+
+  cout << "`Pre Order Traversal" << endl;
+  tr.PrintOutPreOrder();
+
+  cout << "Post Order Traversal" << endl;
+  tr.PrintOutPostOrder();
+
+  cout << "Height" << endl;
+  cout << tr.Height() << endl;
+
+  cout << "Linked List" << endl;
+  TreeNode *llHead = tr.CreateLinkedList();
+
+  while( llHead != NULL)
+    {
+      cout << llHead->Data << " ";
+      llHead = llHead->Right;
+    }
+  cout << endl;
+}
