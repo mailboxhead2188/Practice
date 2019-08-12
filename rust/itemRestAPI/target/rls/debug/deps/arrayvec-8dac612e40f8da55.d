@@ -1,0 +1,11 @@
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/arrayvec-8dac612e40f8da55.rmeta: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/maybe_uninit_stable.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array_string.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/char.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/range.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/errors.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/arrayvec-8dac612e40f8da55.d: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/maybe_uninit_stable.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array_string.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/char.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/range.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/errors.rs
+
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/lib.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/maybe_uninit_stable.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/array_string.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/char.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/range.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/arrayvec-0.4.11/src/errors.rs:

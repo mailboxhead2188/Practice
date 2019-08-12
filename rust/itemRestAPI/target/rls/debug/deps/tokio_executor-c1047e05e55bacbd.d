@@ -1,0 +1,11 @@
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/tokio_executor-c1047e05e55bacbd.rmeta: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/enter.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/error.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/executor.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/global.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/park.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/typed.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/tokio_executor-c1047e05e55bacbd.d: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/enter.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/error.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/executor.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/global.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/park.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/typed.rs
+
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/lib.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/enter.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/error.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/executor.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/global.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/park.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-executor-0.1.8/src/typed.rs:

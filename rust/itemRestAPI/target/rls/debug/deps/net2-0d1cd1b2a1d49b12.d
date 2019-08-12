@@ -1,0 +1,13 @@
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/net2-0d1cd1b2a1d49b12.rmeta: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/tcp.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/udp.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/socket.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/ext.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/utils.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/mod.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/impls.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/unix.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/net2-0d1cd1b2a1d49b12.d: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/tcp.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/udp.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/socket.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/ext.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/utils.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/mod.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/impls.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/unix.rs
+
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/lib.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/tcp.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/udp.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/socket.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/ext.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/utils.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/mod.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/sys/unix/impls.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/net2-0.2.33/src/unix.rs:

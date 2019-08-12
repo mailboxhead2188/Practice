@@ -1,0 +1,11 @@
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/indexmap-24e14afee9806be4.rmeta: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/macros.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/util.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/equivalent.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/mutable_keys.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/set.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/map.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/rls/debug/deps/indexmap-24e14afee9806be4.d: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/macros.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/util.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/equivalent.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/mutable_keys.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/set.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/map.rs
+
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/lib.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/macros.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/util.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/equivalent.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/mutable_keys.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/set.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/indexmap-1.0.2/src/map.rs:

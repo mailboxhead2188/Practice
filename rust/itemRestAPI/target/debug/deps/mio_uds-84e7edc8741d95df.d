@@ -1,0 +1,11 @@
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/debug/deps/mio_uds-84e7edc8741d95df.rmeta: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/datagram.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/listener.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/socket.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/stream.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/debug/deps/libmio_uds-84e7edc8741d95df.rlib: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/datagram.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/listener.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/socket.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/stream.rs
+
+/home/mailboxhead/Documents/Practice/rust/itemRestAPI/target/debug/deps/mio_uds-84e7edc8741d95df.d: /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/lib.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/datagram.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/listener.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/socket.rs /home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/stream.rs
+
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/lib.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/datagram.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/listener.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/socket.rs:
+/home/mailboxhead/.cargo/registry/src/github.com-1ecc6299db9ec823/mio-uds-0.6.7/src/stream.rs:
