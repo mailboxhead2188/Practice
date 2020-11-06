@@ -25,8 +25,8 @@ void SocketTest();
 
 int main(int argc, char *argv[])
 {
-    //MorseCodeLED(argc, argv);
-    SocketTest();
+    MorseCodeLED(argc, argv);
+    //SocketTest();
 }
 
 void MorseCodeLED(int argc, char *argv[])
@@ -59,14 +59,14 @@ void MorseCodeLED(int argc, char *argv[])
             ioctl(keyboard_handle, KDSETLED, state);
 
             if (morse[i] == '.') {
-                sleep(2);
+                usleep(60000);
             } else if (morse[i] == '-') {
-                sleep(4);
+                usleep(200000);
             }
 
             state = ~LED_CAP;
             ioctl(keyboard_handle, KDSETLED, state);
-            sleep(1);
+            usleep(100000);
         }
         c = *(++string);
     }
