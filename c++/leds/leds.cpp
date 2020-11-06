@@ -11,17 +11,10 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-enum curr_state
-{
-    Num,
-    Caps,
-    Scroll
-};
-
 // Forward declarations
-void MorseCodeLED(int argc, char *argv[]);
-char* GetMorseCode(char c);
-void SocketTest();
+void    MorseCodeLED(int argc, char *argv[]);
+char*   GetMorseCode(char c);
+void    SocketTest();
 
 int main(int argc, char *argv[])
 {
@@ -37,9 +30,8 @@ void MorseCodeLED(int argc, char *argv[])
 
     char *string = argv[1];
 
-    // tty0 is the keyboard
+    // tty0 is the keyboard. Learned this the hard way...
     int keyboard_handle = open("/dev/tty0", O_RDWR);
-    curr_state kb_state = Num;
     unsigned char state;
     int rtn = ioctl(keyboard_handle, KDGETLED, &state);
     char c = *string;
@@ -50,11 +42,11 @@ void MorseCodeLED(int argc, char *argv[])
     while(c != '\0')
     {
         char* morse = GetMorseCode(c);
-        printf("Char %c\n", c);
+        printf("Char %c: ", c);
 
         for(int i=0; i < strlen(morse); i++)
         {
-            printf("Current morse symbol: %c\n", morse[i]);
+            printf("%c", morse[i]);
             state = LED_CAP;
             ioctl(keyboard_handle, KDSETLED, state);
 
@@ -68,6 +60,7 @@ void MorseCodeLED(int argc, char *argv[])
             ioctl(keyboard_handle, KDSETLED, state);
             usleep(100000);
         }
+        printf("\n");
         c = *(++string);
     }
 
