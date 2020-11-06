@@ -5,8 +5,11 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/kd.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 enum curr_state
 {
@@ -16,12 +19,20 @@ enum curr_state
 };
 
 // Forward declarations
+void MorseCodeLED(int argc, char *argv[]);
 char* GetMorseCode(char c);
+void SocketTest();
 
 int main(int argc, char *argv[])
 {
+    //MorseCodeLED(argc, argv);
+    SocketTest();
+}
+
+void MorseCodeLED(int argc, char *argv[])
+{
     if (argc == 1) {
-        return 0;
+        return;
     }
 
     char *string = argv[1];
@@ -44,7 +55,7 @@ int main(int argc, char *argv[])
         for(int i=0; i < strlen(morse); i++)
         {
             printf("Current morse symbol: %c\n", morse[i]);
-            state = LED_SCR;
+            state = LED_CAP;
             ioctl(keyboard_handle, KDSETLED, state);
 
             if (morse[i] == '.') {
@@ -53,7 +64,7 @@ int main(int argc, char *argv[])
                 sleep(4);
             }
 
-            state = ~LED_SCR;
+            state = ~LED_CAP;
             ioctl(keyboard_handle, KDSETLED, state);
             sleep(1);
         }
@@ -125,4 +136,48 @@ char* GetMorseCode(char c)
         return "--.."; 
   }
   return "";
+}
+
+void SocketTest()
+{
+    int listenfd;
+    int connfd;
+    sockaddr_in serv_addr;
+    char send_buff[1025];
+
+    // Open the network socket.
+    if (( listenfd = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+    {
+        printf("socket error\n");
+        exit(-1);
+    }
+
+    // Zero out the structure and memory buffer.
+    memset(&serv_addr, '0', sizeof(serv_addr));
+    memset(send_buff, '0', sizeof(send_buff));
+
+    // Bind to a listen server.
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_addr.sin_port = htons(5000); 
+    bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+
+    // Start listening.
+    listen(listenfd, 10);
+
+    while(true)
+    {
+        // 'accept' is synchronous, so this loop is blocked until an incoming request is made.
+        connfd = accept(listenfd, NULL, NULL);
+        printf("Incoming request accepted!\n");
+        time_t ticks = time(NULL);
+
+        // Write back the time of the request (according to the server), then close the connection.
+        snprintf(send_buff, sizeof(send_buff), "%.24s\r\n", ctime(&ticks));
+        write(connfd, send_buff, strlen(send_buff)); 
+        close(connfd);
+
+
+        sleep(1);
+    }
 }
