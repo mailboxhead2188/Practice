@@ -1,0 +1,44 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Assembly File into Object",
+            "type": "shell",
+            "command": "nasm",
+            "args": [
+                "-f",
+                "elf64",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}.o",
+                "${file}"
+            ],
+            "options": {
+                "cwd": "${fileDirname}/"
+            },
+        },
+        {
+            "label": "Link Object File",
+            "type": "shell",
+            "command": "ld",
+            "args": [
+                "-o",
+                "${fileBasenameNoExtension}",
+                "${fileDirname}/${fileBasenameNoExtension}.o",
+            ],
+            "options": {
+                "cwd": "${fileDirname}/"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn":[
+                "Build Assembly File into Object",
+            ]
+        },
+
+
+    ]
+}
