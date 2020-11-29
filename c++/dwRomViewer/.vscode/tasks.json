@@ -1,0 +1,184 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Remove CLI Build Directory",
+            "type": "shell",
+            "command": "rm",
+            "args": ["-f", "-d", "-r", "${workspaceFolder}/build-cli-release"],
+            "options": {
+                "cwd": "/usr/bin",
+            },
+        },
+        {
+            "label": "Remove GUI Build Directory",
+            "type": "shell",
+            "command": "rm",
+            "args": ["-f", "-d", "-r", "${workspaceFolder}/build-qtgui-release"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+        },
+        {
+            "label": "Create CLI Build Directory",
+            "type": "shell",
+            "command": "mkdir",
+            "args": ["-p", "${workspaceFolder}/build-cli-release"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "dependsOn":["Remove CLI Build Directory"]
+        },
+        {
+            "label": "Create GUI Build Directory",
+            "type": "shell",
+            "command": "mkdir",
+            "args": ["-p", "${workspaceFolder}/build-qtgui-release"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "dependsOn":["Remove GUI Build Directory"]
+        },
+        {
+            "type": "shell",
+            "label": "Create CLI Makefile",
+            "command": "/usr/bin/qmake",
+            "args": ["../dwRomViewer-cli.pro"],
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-cli-release"
+            },
+            "dependsOn":["Create CLI Build Directory"]
+        },
+        {
+            "type": "shell",
+            "label": "Create GUI Makefile",
+            "command": "/usr/bin/qmake",
+            "args": ["../dwRomViewer-qtgui.pro"],
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-qtgui-release"
+            },
+            "dependsOn":["Create GUI Build Directory"]
+        },
+        {
+            "type": "shell",
+            "label": "Build CLI",
+            "command": "/usr/bin/make",
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-cli-release"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["Create CLI Makefile"],
+        },
+        {
+            "type": "shell",
+            "label": "Build GUI",
+            "command": "/usr/bin/make",
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-qtgui-release"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["Create GUI Makefile"],
+        },
+
+
+        {
+            "label": "Remove CLI Debug Build Directory",
+            "type": "shell",
+            "command": "rm",
+            "args": ["-f", "-d", "-r", "${workspaceFolder}/build-cli-debug"],
+            "options": {
+                "cwd": "/usr/bin",
+            },
+        },
+        {
+            "label": "Remove GUI Debug Build Directory",
+            "type": "shell",
+            "command": "rm",
+            "args": ["-f", "-d", "-r", "${workspaceFolder}/build-qtgui-debug"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+        },
+        {
+            "label": "Create CLI Debug Build Directory",
+            "type": "shell",
+            "command": "mkdir",
+            "args": ["-p", "${workspaceFolder}/build-cli-debug"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "dependsOn":["Remove CLI Debug Build Directory"]
+        },
+        {
+            "label": "Create GUI Debug Build Directory",
+            "type": "shell",
+            "command": "mkdir",
+            "args": ["-p", "${workspaceFolder}/build-qtgui-debug"],
+            "options": {
+                "cwd": "/usr/bin"
+            },
+            "dependsOn":["Remove GUI Debug Build Directory"]
+        },
+        {
+            "type": "shell",
+            "label": "Create CLI Debug Makefile",
+            "command": "/usr/bin/qmake",
+            "args": ["../dwRomViewer-cli-debug.pro"],
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-cli-debug"
+            },
+            "dependsOn":["Create CLI Debug Build Directory"]
+        },
+        
+        {
+            "type": "shell",
+            "label": "Create GUI Debug Makefile",
+            "command": "/usr/bin/qmake",
+            "args": ["../dwRomViewer-qtgui-debug.pro"],
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-qtgui-debug"
+            },
+            "dependsOn":["Create GUI Debug Build Directory"]
+        },
+        {
+            "type": "shell",
+            "label": "Build CLI Debug",
+            "command": "/usr/bin/make",
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-cli-debug"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["Create CLI Debug Makefile"],
+        },
+        {
+            "type": "shell",
+            "label": "Build GUI Debug",
+            "command": "/usr/bin/make",
+            "problemMatcher": ["$gcc"],
+            "options": {
+                "cwd": "${workspaceFolder}/build-qtgui-debug"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["Create GUI Debug Makefile"],
+        },
+     ]
+  }
