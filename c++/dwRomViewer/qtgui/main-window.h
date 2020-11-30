@@ -34,6 +34,7 @@ struct configuration {
     char flags[64];
 };
 
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -42,23 +43,17 @@ public:
 
 private slots:
     void handleRomFile();
-    void loadRomToUI(dw_rom *rom);
+    void handleMonsterChange();
 
 private:
     void layout();
     void initSlots();
     void initWidgets();
     void initStatus();
-    void addOption(char flag, QString text, int tab, int x, int y);
-    void addOption(char flag, QString text, QString requires,
-        QString excluded_by, int tab, int x, int y);
-    void addLabel(QString text, QGridLayout *obj, int tab, int x, int y);
-    void placeWidget(QWidget *widget, int tab, int x, int y);
+    void loadRomToUI(dw_rom *rom);
 
 private:
     QWidget *mainWidget;
-    QWidget *gameplayWidget;
-    QWidget *funWidget;
     QTabWidget *tabWidget;
     FileEntry *romFile;
     QListWidget *levels;
@@ -66,6 +61,13 @@ private:
     QWidget *monsters;
     QComboBox *monsterSelector;
     QGridLayout *monsterStats;
+    dw_rom *rom;
+    QWidget *agiWidget;
+    QWidget *strWidget;
+    QWidget *hpWidget;
+    QWidget *goldWidget;
+    QWidget *xpWidget;
+    QWidget *resWidget;
 };
 
 

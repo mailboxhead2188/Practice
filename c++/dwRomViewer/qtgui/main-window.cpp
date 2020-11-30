@@ -41,18 +41,66 @@ enum tabs {
     LOCATIONS
 };
 
+
+std::vector<std::string> monster_map =
+{
+    "SLIME",       
+    "RED_SLIME",
+    "DRAKEE",
+    "GHOST",
+    "MAGICIAN",
+    "MAGIDRAKEE",  
+    "SCORPION",
+    "DRUIN",
+    "POLTERGEIST",
+    "DROLL",
+    "DRAKEEMA",    
+    "SKELETON",
+    "WARLOCK",
+    "METAL_SCORPION",
+    "WOLF",
+    "WRAITH",      
+    "METAL_SLIME",
+    "SPECTER",
+    "WOLFLORD",
+    "DRUINLORD",
+    "DROLLMAGI",   
+    "WYVERN",
+    "ROGUE_SCORPION",
+    "WRAITH_KNIGHT",
+    "GOLEM",
+    "GOLDMAN",     
+    "KNIGHT",
+    "MAGIWYVERN",
+    "DEMON_KNIGHT",
+    "WEREWOLF",
+    "GREEN_DRAGON",
+    "STARWYVERN",
+    "WIZARD",
+    "AXE_KNIGHT",
+    "BLUE_DRAGON",
+    "STONEMAN",   
+    "ARMORED_KNIGHT",
+    "RED_DRAGON",
+    "DRAGONLORD_1",
+    "DRAGONLORD_2"
+};
+
+std::vector<std::string> spell_map =
+{ "HEAL", "HURT", "SLEEP", "RADIANT", "STOPSPELL", "OUTSIDE", "RETURN", "REPEL", "HEALMORE", "HURTMORE" };
+
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     this->setMinimumWidth(650);
     this->mainWidget = new QWidget();
-    this->gameplayWidget = new QWidget();
-    this->funWidget = new QWidget();
     this->setCentralWidget(this->mainWidget);
 
     this->initWidgets();
     this->initStatus();
     this->layout();
     this->initSlots();
+
+    this->rom = new dw_rom();
 }
 
 void MainWindow::initStatus() {
@@ -75,6 +123,8 @@ void MainWindow::initSlots()
 {
     connect(this->romFile, SIGNAL(textEdited(QString)), this,
                 SLOT(handleRomFile()));
+    connect(this->monsterSelector, SIGNAL(activated(int)),
+            this, SLOT(handleMonsterChange()));
 }
 
 void MainWindow::layout()
@@ -111,6 +161,26 @@ void MainWindow::layout()
     monsterLayout->addWidget(this->monsterSelector);
     page->setLayout(this->monsterStats);
     monsterLayout->addWidget(page);
+    this->monsterStats->addWidget(new QLabel("Agility", this), 0, 0, 1, 1);
+    this->monsterStats->addWidget(new QLabel("Strength", this), 1, 0, 1, 1);
+    this->monsterStats->addWidget(new QLabel("HP", this), 2, 0, 1, 1);
+    this->monsterStats->addWidget(new QLabel("Gold", this), 3, 0, 1, 1);
+    this->monsterStats->addWidget(new QLabel("XP", this), 4, 0, 1, 1);
+    this->monsterStats->addWidget(new QLabel("Resistance", this), 5, 0, 1, 1);
+
+    this->agiWidget = new QLabel("", this);
+    this->strWidget = new QLabel("", this);
+    this->hpWidget = new QLabel("", this);
+    this->goldWidget = new QLabel("", this);
+    this->xpWidget = new QLabel("", this);
+    this->resWidget = new QLabel("", this);
+
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->agiWidget), 0, 1, 1, 1);
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->strWidget), 1, 1, 1, 1);
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->hpWidget), 2, 1, 1, 1);
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->goldWidget), 3, 1, 1, 1);
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->xpWidget), 4, 1, 1, 1);
+    this->monsterStats->addWidget(dynamic_cast<QLabel *>(this->resWidget), 5, 1, 1, 1);
 
     this->tabWidget->addTab(mainMonster, "Monsters");
 
@@ -122,44 +192,46 @@ void MainWindow::layout()
     this->mainWidget->setLayout(vbox);
 }
 
-void MainWindow::addLabel(QString text, QGridLayout *obj, int tab, int x, int y)
-{
-    obj->addWidget(new QLabel(text, this), x, y, 1, 1);
-}
-
-void MainWindow::placeWidget(QWidget *widget, int tab, int x, int y)
-{
-    //this->optionGrids[tab]->addWidget(widget, x, y, 0);
-}
-
 void MainWindow::handleRomFile()
 {
-    dw_rom rom;
-    dwr_init(&rom, this->romFile->text().toLatin1().constData());
-    this->loadRomToUI(&rom);
+    dwr_init(this->rom, this->romFile->text().toLatin1().constData());
+    this->loadRomToUI(this->rom);
 }
 
 void MainWindow::loadRomToUI(dw_rom *rom)
 {
+    std::map<int, int> xpToLevel;
     // Load levels
     // TODO: Better UI layout.
-
     for(int i=1; i<30; i++)
     {
         this->levels->addItem((std::to_string(i+1) + "-" + std::to_string(rom->xp_reqs[i+1])).c_str());
+        xpToLevel.insert(std::pair<int, int>(rom->xp_reqs[i+1], i+1));
     }
-
-    // Load Spells
-    /*
-    std::vector<std::string> spell_map =
-    { "HEAL", "HURT", "SLEEP", "RADIANT", "STOPSPELL", "OUTSIDE", "RETURN", "REPEL", "HEALMORE", "HURTMORE" };
     
-    gridObj.reset(this->spells);
-
+    // Load Spells
     for(int i=0; i<std::size(spell_map); i++)
     {
-        gridObj->addWidget(new QLabel(QString(std::to_string(i).c_str())), i+1, 0);
-        gridObj->addWidget(new QLabel(QString(std::to_string(rom->xp_reqs[i+1]).c_str())), i+1, 1);
+        int level = xpToLevel.at(rom->xp_reqs[i+1]);
+        this->spells->addItem((spell_map[i] + " - " + (std::to_string(level))).c_str());
     }
-    */
+    
+    // Load Monsters
+    for (int i=SLIME; i <= RED_DRAGON; i++) {
+        this->monsterSelector->addItem(monster_map[i].c_str());
+    }
+    
+}
+
+void MainWindow::handleMonsterChange()
+{
+    int selectedIndex = this->monsterSelector->currentIndex();
+    dw_enemy selectedMonster = rom->enemies[selectedIndex];
+
+    (dynamic_cast<QLabel *>(this->agiWidget))->setText(std::to_string(selectedMonster.agi).c_str());
+    (dynamic_cast<QLabel *>(this->strWidget))->setText(std::to_string(selectedMonster.str).c_str());
+    (dynamic_cast<QLabel *>(this->goldWidget))->setText(std::to_string(selectedMonster.gold).c_str());
+    (dynamic_cast<QLabel *>(this->xpWidget))->setText(std::to_string(selectedMonster.xp).c_str());
+    (dynamic_cast<QLabel *>(this->hpWidget))->setText(std::to_string(selectedMonster.hp).c_str());
+    (dynamic_cast<QLabel *>(this->resWidget))->setText(std::to_string(selectedMonster.s_ss_resist).c_str());
 }

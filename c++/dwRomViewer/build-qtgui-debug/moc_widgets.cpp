@@ -1,19 +1,18 @@
 /****************************************************************************
 ** Meta object code from reading C++ file 'widgets.h'
 **
-** Created by: The Qt Meta Object Compiler version 67 (Qt 5.14.2)
+** Created by: The Qt Meta Object Compiler version 67 (Qt 5.12.8)
 **
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include <memory>
 #include "../qtgui/widgets.h"
 #include <QtCore/qbytearray.h>
 #include <QtCore/qmetatype.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'widgets.h' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 67
-#error "This file was generated using the moc from 5.14.2. It"
+#error "This file was generated using the moc from 5.12.8. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -99,7 +98,7 @@ void ButtonEntry::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id,
 }
 
 QT_INIT_METAOBJECT const QMetaObject ButtonEntry::staticMetaObject = { {
-    QMetaObject::SuperData::link<QWidget::staticMetaObject>(),
+    &QWidget::staticMetaObject,
     qt_meta_stringdata_ButtonEntry.data,
     qt_meta_data_ButtonEntry,
     qt_static_metacall,
@@ -141,7 +140,7 @@ int ButtonEntry::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 // SIGNAL 0
 void ButtonEntry::textEdited(QString _t1)
 {
-    void *_a[] = { nullptr, const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t1))) };
+    void *_a[] = { nullptr, const_cast<void*>(reinterpret_cast<const void*>(&_t1)) };
     QMetaObject::activate(this, &staticMetaObject, 0, _a);
 }
 struct qt_meta_stringdata_FileEntry_t {
@@ -205,7 +204,7 @@ void FileEntry::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, v
 }
 
 QT_INIT_METAOBJECT const QMetaObject FileEntry::staticMetaObject = { {
-    QMetaObject::SuperData::link<ButtonEntry::staticMetaObject>(),
+    &ButtonEntry::staticMetaObject,
     qt_meta_stringdata_FileEntry.data,
     qt_meta_data_FileEntry,
     qt_static_metacall,
@@ -299,7 +298,7 @@ void DirEntry::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, vo
 }
 
 QT_INIT_METAOBJECT const QMetaObject DirEntry::staticMetaObject = { {
-    QMetaObject::SuperData::link<ButtonEntry::staticMetaObject>(),
+    &ButtonEntry::staticMetaObject,
     qt_meta_stringdata_DirEntry.data,
     qt_meta_data_DirEntry,
     qt_static_metacall,
@@ -393,7 +392,7 @@ void SeedEntry::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, v
 }
 
 QT_INIT_METAOBJECT const QMetaObject SeedEntry::staticMetaObject = { {
-    QMetaObject::SuperData::link<ButtonEntry::staticMetaObject>(),
+    &ButtonEntry::staticMetaObject,
     qt_meta_stringdata_SeedEntry.data,
     qt_meta_data_SeedEntry,
     qt_static_metacall,
@@ -492,7 +491,7 @@ void FlagEntry::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, v
 }
 
 QT_INIT_METAOBJECT const QMetaObject FlagEntry::staticMetaObject = { {
-    QMetaObject::SuperData::link<ButtonEntry::staticMetaObject>(),
+    &ButtonEntry::staticMetaObject,
     qt_meta_stringdata_FlagEntry.data,
     qt_meta_data_FlagEntry,
     qt_static_metacall,

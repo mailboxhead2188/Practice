@@ -60,7 +60,7 @@ bool dwr_init(dw_rom *rom, const char *input_file)
     FILE *input;
     int read;
 
-    rom->header = reinterpret_cast<uint8_t*>(malloc(ROM_SIZE));
+    rom->header = static_cast<uint8_t *>(malloc(ROM_SIZE));
     memset(rom->header, 0, ROM_SIZE);
     input = fopen(input_file, "rb");
     if (!input) {
