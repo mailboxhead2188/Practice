@@ -13,24 +13,34 @@ class BrowserSearchTests < Test::Unit::TestCase
     # Search term
     @@search_term = "duck"
     # The direct-search url for google
-    @@direct_url = "https://www.google.com/search?q=#{@@search_term}"
+    @@direct_url = "https://www.google.com/search?q=#{@@search_term}&hl=%s"
     # Verification string (TBD). Non-english for verification against other languages.
-    @@verification_string = "wiki/Duck"
+    @@verification_string = "Duck - Wikipedia"
+    # Supported languages
+    @@languages = ["en", "de", "af", "am", "bg", "ca", "hr", "cs", "nl"]
 
     # Does a direct query in-browser for the term 'duck' within chrome
     def test_google_search_duck_direct_query_chrome
         browser = Selenium::WebDriver.for :chrome
         puts "Directly searching for 'duck' via the URL..."
-        browser.navigate.to(@@direct_url)
-        assert(browser.find_element(:id=>"gsr").text.include? @@verification_string)
+
+        @@languages.each do |lang|
+            browser.navigate.to(@@direct_url % lang)
+            #puts browser.find_element(:id=>"gsr").text
+            assert(browser.find_element(:id=>"gsr").text.include? @@verification_string)
+        end
     end
 
     # Does a direct query in-browser for the term 'duck' within firefox
     def test_google_search_duck_direct_query_firefox
         browser = Selenium::WebDriver.for :firefox
         puts "Directly searching for 'duck' via the URL..."
-        browser.navigate.to(@@direct_url)
-        assert(browser.find_element(:id=>"gsr").text.include? @@verification_string )
+        
+        @@languages.each do |lang|
+            browser.navigate.to(@@direct_url % lang)
+            #puts browser.find_element(:id=>"gsr").text
+            assert(browser.find_element(:id=>"gsr").text.include? @@verification_string)
+        end
     end
 end
 
