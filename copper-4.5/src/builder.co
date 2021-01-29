@@ -1,0 +1,5296 @@
+//[of]:Builder
+//[c]Build all modules
+//[c]
+struct Builder : ErrorReporter
+
+	// private
+	var importPath	: *ImportPath	// The path to look for source files
+	var defines	: *DefineDictionary	// The command line defines
+	var program	: *Program	// The program to build
+	var nameBuffer	: MemoryBuffer	// Buffer to generate c names
+	var nameIndex	: Uinteger	// Index to generate a unique name
+	var localPools	: LinkCollection (LocalPool)	// The stack of recyclable memory pools for blocks
+	var currentLocalPool	: *LocalPool	// Pointer to the current block pool in the localPools collection
+	var integerConstants	: IntegerConstantDictionary	// To detect duplicates in switches (stored here to optimize memory allocations)
+	var functionsToDefine	: Vector (*Function)	// The list of used functions where the body is not defined yet
+
+//[of]:	initialize - release
+//[of]:initialize
+//[c]Initializes the compiler
+//[c]
+function initialize (	importPath	: *ImportPath,
+	defines	: *DefineDictionary,
+	program	: *Program)
+
+	self importPath	= importPath
+	self defines	= defines
+	self program	= program
+	self currentLocalPool	= nil
+	self nameIndex	= 1
+	self nameBuffer	initialize
+	self localPools	initialize
+	self integerConstants	initialize
+	self functionsToDefine	initialize
+
+end
+//[cf]
+//[of]:release
+function release
+
+	self functionsToDefine release
+	self integerConstants release
+	self nameBuffer release
+	self localPools deleteAllAndRelease
+
+end
+//[cf]
+//[cf]
+//[of]:	compiling
+//[of]:compile
+//[c]Starts the compilation
+//[c]
+//[c]RETURN VALUE
+//[c]	Return true if the module has been compiled without errors.
+//[c]
+function compile (filename: String)
+
+	var module = self loadModule (filename, nil, 'none)
+	if module isNil
+		return false
+	end
+	
+	var ok = true
+	
+	// Startup: define all entry points
+	self program functions each do f
+		if f name == identifiers main
+			f entry = true 
+		end
+		if f entry and not f used
+			self withContext (module) do cx
+				ok &= cx defineFunctionType (f)
+			end
+		end
+	end
+
+	while self functionsToDefine notEmpty
+		var f = self functionsToDefine last
+		self functionsToDefine removeLast
+		self withContext (f scope) do cx
+			ok &= cx defineFunctionBody (f)
+		end
+	end
+	
+//[c]	self program eachExternFunction do f
+//[c]		output ("Import \a", f)
+//[c]	end
+//[c]	
+//[c]	self program eachFunction do f
+//[c]		output ("Function \a", f)
+//[c]	end
+	
+	return ok
+
+end
+//[cf]
+//[cf]
+//[of]:	utils
+//[of]:loadModule
+//[c]Loads a module.
+//[c]
+//[c]PARAMETERS
+//[c]	filename	--	The normalized name of the file to import.
+//[c]	file	--	The file containing the import statement or nil for the root module (the one from the command line).
+//[c]	line	--	The line number of the import statement or 'none for the root module.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the module is successfully loaded.
+//[c]
+function loadModule (	filename	: String, 
+	file	: String, 
+	line	: LineNumber) : *Module
+
+	// Test if already loaded
+	var module = self program findModule (filename)
+	if module notNil
+		// Test for recursion
+		if module loading
+			self reportError (file, line, ErrorMessage : 'recursiveImport, filename)
+			return nil
+		end
+		return module
+	end
+
+	// Load the Abstract Syntax Tree
+	var ast = self loadAST (filename, file, line)
+	if ast isNil
+		return nil
+	end
+	
+	// Create the module
+	module = self program createModule (filename, self importPath)
+	
+	// Mark the module as loading
+	module loading = true
+
+	// Declare all elements and import modules
+	var ok : Bool
+	self withContext (module) do cx
+		ok = cx declareContent (ast, nil, nil)
+	end
+	
+	// Mark the module as loaded
+	module loading = false
+	
+	// Return the module or nil if the it is not successfully built
+	return ok cond module else nil
+
+end
+//[cf]
+//[of]:withContext
+function withContext (	initialScope	: *Scope )
+
+	var cx	: BuilderContext
+	cx initialize (nil, self, initialScope, self getLocalPool, nil)
+	yield cx
+	self releaseLocalPool
+
+end
+//[cf]
+//[of]:getPublicName
+//[c]Computes the public name of the function
+//[c]
+//[c]REMARKS
+//[c]	This function is generic: it applies both to function and externs.
+//[c]
+function getPublicName (f)
+
+	if f namingConvention == 'c
+		return f name string
+	else
+		// Generate a copper name
+		var buffer = self nameBuffer
+		buffer removeAll
+
+		// Always start with '_' to avoid any conflict
+		buffer addByte ($_)
+		
+		// Add the name of the function
+		var name = f name string
+		buffer addBlock (name, name size toByteSize)
+
+		// Add a counter
+		addUnsignedToBuffer (buffer, self nameIndex)
+		
+		// Terminate the string
+		buffer addByte (0)
+		
+		self nameIndex ++
+
+		var size = buffer size
+		var publicName	= self program pool allocateBytes (size) cast (String8)
+		copyBytes (publicName, buffer base, size)
+		return publicName
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:getLocalPool
+//[c]Get a new block pool
+//[c]
+function getLocalPool
+
+	var e = self currentLocalPool
+	if e isNil
+		e = self localPools firstElement
+	else
+		e = e nextSibling
+	end
+	
+	if e isNil
+		// No more pool: create a new one
+		e = LocalPool new
+		self localPools add (e)
+	else
+		// Recycle this one
+		e reset
+	end
+	
+	self currentLocalPool = e
+	return e pool
+
+end
+//[cf]
+//[of]:releaseLocalPool
+function releaseLocalPool
+	self currentLocalPool = self currentLocalPool previousSibling
+end
+//[cf]
+//[of]:loadAST
+//[c]Loads the Abstract Syntax Tree.
+//[c]
+//[c]PARAMETERS
+//[c]	filename	--	The normalized name of the file to import.
+//[c]	file	--	The file containing the import statement or nil for the root module (the one from the command line).
+//[c]	line	--	The line number of the import statement or 'none for the root module.
+//[c]
+//[c]RETURN VALUES
+//[c]	The AST or nil if an error occurred.
+//[c]
+function loadAST (	filename	: String, 
+	file	: String, 
+	line	: LineNumber)
+
+	// Load the file
+	var mb : MemoryBuffer
+	mb initialize
+	var err = loadFile (filename, mb)
+	if err notNil
+		self reportError (file, line, ErrorMessage : 'import, filename)
+		err delete
+		mb release
+		return nil
+	end
+	var text = mb buffer downcast (String8)
+	
+	// Create the Abstract Syntax Tree of the module
+	// The AST and lexemes must be stored in the pool of the program
+	// as program elements keep references on the strings or source elements
+	var parser : Parser
+	parser initialize (self program pool, text, filename, self defines, self program identifiers, self)
+	var ast = parser getModule
+	parser release
+
+	// Release the file buffer now (we have copied everything we need in
+	// the Abstract Syntax Tree).
+	mb release
+
+	return ast
+end
+//[cf]
+//[of]:loadFile
+//[c]Loads a text file into the memory buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	filename	--	The fully qualified filename.
+//[c]	buffer	--	The initialized buffer where the content of the file is append plus a nul character.
+//[c]
+//[c]RETURN VALUES
+//[c]	Nil if success, an error object otherwise.
+//[c]
+static function loadFile (filename: String, buffer: *MemoryBuffer)
+
+	// Get file size
+	var size, err1 = File getSize (filename)
+	if err1 notNil
+		return err1
+	end
+	
+	// Open the file
+	var f, err2 = File openRead (filename)
+	if err2 notNil
+		return err2
+	end
+
+	// Allocate memory
+	var base = buffer allocate (size + 1)
+		
+	// Read the file
+	var read, err3 = f read (base, size)
+
+	// Close the file
+	err3 = err3 | f close
+
+	// Mark end of string
+	base [size] = 0
+	
+	// Setup object status and return
+	return err3
+
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+
+.private
+//[of]:BuilderContext
+//[c]All the information when compiling an object (a function, a constant, 
+//[c]a variable, ...)
+//[c]
+struct BuilderContext
+
+	var parent	: *BuilderContext	// The parent context
+	var builder	: *Builder	// The root builder
+	var base	: *Scope	// The base scope (scope when creating the context)
+	var scope	: *Scope	// The current scope
+	var block	: *Block	// The block being built
+	var pool	: *MemoryPool	// The temporary pool for temporary scopes
+	var returnCount	: Integer	// The number of explicit returns (used for optimization in code generator)
+	var returnTypes	: *TypeSequence	// The type of values returned by the function to assign to the function at the end if everything is ok
+			// and if it doesn't conflict with a previous types
+	var fixedReturnTypes	: *TypeSequence	// The return type of the current function or nil if not specified (or no current function).
+			// It is used to define the typespace of returned arguments
+	var breakContext	: *BreakContext	// The stack of loops and iterators
+	var extra	: *ExpressionList	// The values for extra parameters or nil if not applicable
+	var macroContext	: *MacroContext	// Additional data if this context corresponds to a macro being expanded
+	var composites	: *CompositeExpression	// The list of composites expression collected.
+			// As a BuilderContext is created for each function, this list is initialized only once at the initialization
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (	parent	: *BuilderContext,
+	builder	: *Builder,
+	scope	: *Scope,
+	pool	: *MemoryPool,
+	macro	: *MacroContext)
+
+	self parent	= parent
+	self builder	= builder
+	self pool	= pool
+	self base	= scope
+	self scope	= scope
+	self block	= nil
+	self returnCount	= 0
+	self returnTypes	= nil
+	self fixedReturnTypes	= nil
+	self breakContext	= nil
+	self extra	= nil
+	self macroContext	= macro
+	self composites	= nil
+
+end
+//[cf]
+//[cf]
+//[of]:	declaring
+//[of]:declareContent
+//[c]Declares the content of a module, a structure or a sub-type
+//[c]
+//[c]PARAMETERS
+//[c]	source	--	The source node containing definitions.
+//[c]	context	--	The context for instance definitions. Nil for toplevel.
+//[c]	metaType	--	The context for class definitions. Nil for toplevel.
+//[c]
+function declareContent (source: *ASTNode, context: *Type, metaType: *MetaType) : Bool
+
+	var ok = true
+	var program = self program
+	var module = self module
+	var scope = self scope
+	source children each do e
+		switch e code
+		// Meta definitions (not toplevel)
+//[of]:		meta function
+		case 'metaFunction
+			var sf = e asFunction
+			if sf generic
+				var d = program createGenericFunction (scope, sf, metaType)
+				ok &= self addContextualDefinition (metaType, d, sf directives visibility)
+			else
+				var d = program createFunction (scope, sf, metaType)
+				ok &= self addContextualDefinition (metaType, d, sf directives visibility)
+			end
+//[cf]
+//[of]:		meta const
+		case 'metaConst
+			var p = program createAlias (scope, metaType, e asAlias)
+			ok &= self addContextualDefinition (metaType, p, e directives visibility)
+//[cf]
+//[of]:		meta var
+		case 'metaVar
+			var d = program createGlobalVariable (scope, e asGlobalVariable)
+			ok &= self addContextualDefinition (metaType, d, e directives visibility)
+//[cf]
+//[of]:		meta struct
+		case 'metaStruct
+			ok &= self declareStructure (e asType, metaType)
+//[cf]
+//[of]:		meta type
+		case 'metaType
+			ok &= self declareType (e asType, metaType)
+//[cf]
+//[of]:		import meta function
+		case 'importMetaFunction
+			var f = program createExternFunction (module, e asExternFunction, scope, metaType)
+			ok &= self addContextualDefinition (metaType, f, e directives visibility)
+//[cf]
+
+		// Static definitions
+//[of]:		function
+		case 'function
+			var sf = e asFunction
+			if sf generic
+				var d = program createGenericFunction (scope, sf, nil)
+				ok &= self addGlobalDefinition (scope, d, sf directives visibility)
+			else
+				var d = program createFunction (scope, sf, nil)
+				ok &= self addGlobalDefinition (scope, d, sf directives visibility)
+			end
+//[cf]
+//[of]:		const
+		case 'const
+			var d = program createAlias (scope, nil, e asAlias)
+			ok &= self addGlobalDefinition (scope, d, e directives visibility)
+//[cf]
+//[of]:		var
+		case 'var
+			var d = program createGlobalVariable (scope, e asGlobalVariable)
+			ok &= self addGlobalDefinition (scope, d, e directives visibility)
+//[cf]
+//[of]:		struct
+		case 'struct
+			ok &= self declareStructure (e asType, nil)
+//[cf]
+//[of]:		type
+		case 'type
+			ok &= self declareType (e asType, nil)
+//[cf]
+//[of]:		import function
+		case 'importFunction
+			var d = program createExternFunction (module, e asExternFunction, scope, nil)
+			ok &= self addGlobalDefinition (scope, d, e directives visibility)
+//[cf]
+//[of]:		import
+		case 'import
+			ok &= self processImport (e asImport)
+//[cf]
+
+		// Instance definitions (not toplevel)
+//[of]:		symbol
+		case 'symbol
+			var symbol = program getSymbol (e asSymbol)
+			ok &= self addContextualSymbol (context, symbol)
+//[cf]
+//[of]:		instance function
+		case 'instanceFunction
+			var sf = e asFunction
+			if sf generic
+				var d = program createGenericFunction (scope, sf, context)
+				ok &= self addContextualDefinition (context, d, sf directives visibility)
+			else
+				var d = program createFunction (scope, sf, context)
+				ok &= self addContextualDefinition (context, d, sf directives visibility)
+			end
+//[cf]
+//[of]:		instance const
+		case 'instanceConst
+			var p = program createAlias (scope, context, e asAlias)
+			ok &= self addContextualDefinition (context, p, e directives visibility)
+//[cf]
+//[of]:		instance var
+		case 'instanceVar
+			if not context isPointer
+				self reportSourceError (e, 'notStructure, context)
+				ok = false
+			else
+				var target = context asPointer target
+				if not target isStructure
+					self reportSourceError (e, 'notStructure, target)
+					ok = false
+				else
+					var structure = context asPointer target asStructure
+					var a = structure createAttribute (e asAttribute)
+					ok &= self addContextualDefinition (context, a, e directives visibility)
+				end
+			end
+//[cf]
+//[of]:		instance struct
+		case 'instanceStruct
+			ok &= self declareStructure (e asType, context)
+//[cf]
+//[of]:		instance type
+		case 'instanceType
+			ok &= self declareType (e asType, context)
+//[cf]
+//[of]:		import instance function
+		case 'importInstanceFunction
+			var f = program createExternFunction (module, e asExternFunction, scope, context)
+			ok &= self addContextualDefinition (context, f, e directives visibility)
+//[cf]
+		end
+	end
+
+	// Process extension
+	ok &= self declareExtensions (source)
+
+	// The meta type is now defined or broken
+	// It must be fixed now so attributes that reference the meta type 
+	// (e.g. a class constant for an array) won't recurse on the definition 
+	// of their structures.
+	if metaType notNil
+		metaType state = ok cond 'defined else 'invalid
+	end
+
+	return ok
+
+end
+
+//[of]:declareExtensions
+function declareExtensions (source: *ASTNode)
+
+	var ok = true
+	source children each do e
+		if e code == 'extend
+			ok &= self declareExtension (e asExtension)
+		end
+	end
+	return ok
+
+end
+
+//[of]:declareExtension
+function declareExtension (source: *ASTExtension)
+
+	// Get the type
+	var type = self evaluateType (source type)
+	if type isNil
+		return false
+	end
+
+	// The type and its meta-type must be defined
+	var ok = self defineType (type)
+	if not ok
+		return false
+	end
+	
+	var scope = self program getScope (self scope, Index : 64)
+	self withContext (scope) do cx
+		ok &= cx declareContent (source, type, type metaType)
+	end
+	return ok
+
+end
+//[cf]
+//[cf]
+//[of]:declareStructure
+function declareStructure (ss: *ASTType, context: *Type)
+
+	var program = self program
+	var module = self module
+	var scope = self scope
+
+	var d : *Definition
+	if ss generic
+		d = program createGenericType (scope, ss)
+	else
+		var structure	= program createStructure (scope, ss, nil)
+		d = program getTypeDefinition (module, ss line, ss name, structure)
+	end
+	if context isNil
+		return self addGlobalDefinition (scope, d, ss directives visibility)
+	else
+		return self addContextualDefinition (context, d, ss directives visibility)
+	end
+
+end
+//[cf]
+//[of]:declareType
+function declareType (st: *ASTType, context: *Type)
+
+	var program = self program
+	var module = self module
+	var scope = self scope
+
+	var d : *Definition
+	if st generic
+		d = program createGenericType (scope, st)
+	else
+		d = program getSubTypeDefinition (scope, st)
+	end
+	if context isNil
+		return self addGlobalDefinition (scope, d, st directives visibility)
+	else
+		return self addContextualDefinition (context, d, st directives visibility)
+	end
+
+end
+//[cf]
+//[of]:processImport
+function processImport (i: *ASTImport)
+
+	// Load the module
+	var filename = self module getFullName (i name)
+	var child = self builder loadModule (filename, self module filename, i line)
+	if child isNil
+		return false
+	end
+
+	var ok = true
+	child eachPublicDefinition do d
+		ok &= self addGlobalDefinition (self scope, d, i directives visibility)
+	end
+	return ok
+
+end
+//[cf]
+//[cf]
+//[cf]
+//[of]:	defining
+//[of]:defineAlias
+function defineAlias (alias: *Alias)
+
+	switch alias state
+	case 'defined
+		return true
+	case 'invalid
+		return false
+	case 'defining
+		self reportDefinitionError (alias, 'infiniteRecursion, alias name)
+		alias state = 'invalid
+		return false
+	else
+		alias state = 'defining
+		alias use
+		var ok = true
+		self withContext (alias scope) do cx
+			var s = alias source expression
+			var e : *Expression
+			
+			if alias context notNil
+				// Use a scope for each extra parameter
+				cx withScope do
+					// Create a parameter
+					var p = cx program pool new (Parameter, alias module, alias line, identifiers self, alias context, true)
+					
+					// It is not necessary to check the result of the declaration: 
+					// it is the first definition in the scope so it cannot conflict
+					// with another definition.
+					cx addLocalDefinition (p)
+
+					e = cx evaluateExpression (s, nil)
+				end
+			else
+				// No context: don't create a scope
+				e = cx evaluateExpression (s, nil)
+			end
+			
+			if e isNil
+				ok = false
+			elsif not e isType and not e isConstant
+				cx reportSourceError (s, 'notConstantValue)
+				ok = false
+			else
+				alias expression = e
+			end
+		end
+		alias state = ok cond 'defined else 'invalid
+		return ok
+	end
+
+end
+//[cf]
+//[of]:defineFunctionType
+//[c]Defines the type of parameters and the return types of the function.
+//[c]
+//[c]PARAMETERS
+//[c]	f	--	The function to evaluate
+//[c]
+//[c]RETURN VALUES
+//[c]	False if the definition of the function has failed. In such a case the 
+//[c]	invalid flag of the function is set.
+//[c]
+//[c]REMARKS
+//[c]	If the return type is not declared, the body of the function is compiled
+//[c]	to infer the return type, otherwise, the function is put on a list of
+//[c]	function to define later.
+//[c]
+function defineFunctionType (f: *Function)
+
+	switch f state
+	case 'invalid
+		return false
+	case 'defined
+		return true
+	case 'defining
+		self reportDefinitionError (f, 'needType, f name)
+		f state = 'invalid
+		return false
+	else
+		f state = 'defining
+		f use
+		
+		var ok = true
+		self withContext (f scope) do cx
+			// Create the list of parameters to the function.
+			// An instance of a generic function has already the parameters added.
+			if not f isInstance
+				if f context notNil
+					f createParameter (f source line, identifiers self, f context, true)
+				end
+				f source parameters each do p
+					// Evaluate the type
+					var type = cx evaluateSimpleType (p type)
+					if type notNil
+						f createParameter (p line, p name, type, true)
+					else
+						ok = false
+					end
+				end
+			end
+			
+			var needBody = false
+			
+			// Define the type of return values
+			var source = f source
+			if source returnTypes notNil
+				cx withScope do
+					// The return types may reference parameters (e.g. @x, 
+					// T, ...), we must declare them here.
+					// So when the return types are explicit, the parameters 
+					// are declared twice but it is acceptable as the majority
+					// of functions does not have explicit return types.
+					f eachNamedParameter do p
+						ok &= cx addLocalDefinition (p)
+					end
+					if ok
+						var types = cx evaluateSimpleTypes (source returnTypes)
+						f returnTypes = types
+						ok &= types notNil
+					end
+				end
+			else
+				needBody = true
+			end
+			
+			// Don't try to define the body if parameters are not correctly evaluated
+			if ok and not f isMacro
+				// We need to evaluate the body in order to infer the return 
+				// types, the yield types or both.
+				if needBody
+					ok = cx defineFunctionBody (f)
+				else
+					// Just add the function to the list of pending definitions
+					cx builder functionsToDefine add (f)
+				end
+			end
+		end
+		f state = ok cond 'defined else 'invalid
+		return ok
+	end
+end
+//[cf]
+//[of]:defineGenericFunction
+//[c]Defines the type of parameters
+//[c]
+//[c]PARAMETERS
+//[c]	f	--	The function to evaluate
+//[c]
+//[c]RETURN VALUES
+//[c]	False if the definition of the function has failed. In such a case the 
+//[c]	invalid flag of the function is set.
+//[c]
+function defineGenericFunction (f: *GenericFunction)
+
+	switch f state
+	case 'defined
+		return true
+	case 'invalid
+		return false 
+	case 'defining
+		self reportDefinitionError (f, 'recursiveFunction, f name)
+		f state = 'invalid
+		return false
+	else
+		var ok = true
+		f state = 'defining
+		self withContext (f scope) do cx
+			cx withScope do
+				if f context notNil
+					var generalizable = true
+					var type = f context
+					if f source selfGeneric
+						generalizable = false
+						type = nil
+					end
+					f createParameter (f source line, identifiers self, type, generalizable)
+				end
+				f source parameters each do p
+					var type = Type nil
+					if p type notNil
+						type = cx evaluateSimpleType (p type)
+						if type isNil
+							ok = false
+						end
+					end
+					f createParameter (p line, p name, type, true)
+				end
+			end
+		end
+		f state = ok cond 'defined else 'invalid
+		return ok
+	end
+
+end
+//[cf]
+//[of]:defineFunctionBody
+//[c]Defines the body of the function
+//[c]
+//[c]PARAMETERS
+//[c]	f	-- the function
+//[c]
+//[c]RETURN VALUES
+//[c]	False if the definition of the function has failed. In such a case the 
+//[c]	invalid flag of the function is set.
+//[c]
+//[c]REMARKS
+//[c]	It is not necessary to test the invalid flag as the function can not be 
+//[c]	invalid here:
+//[c]	* A function can be added only once in the 'functionsToDefine' list
+//[c]	* The function is not added if invalid.
+//[c]	
+function defineFunctionBody (f: *Function)
+
+	var ok = true
+	self withScope do
+		if f isVariadic
+			// The list is stored in the temporary pool
+			self extra = self pool new (ExpressionList)
+			f parameters each do p
+				if p name isNil
+					self extra add (self pool, p expression)
+				end
+			end
+		end
+		
+		f eachNamedParameter do p
+			ok &= self addLocalDefinition (p)
+		end
+		if not ok
+			continue
+		end
+		
+		self fixedReturnTypes = f returnTypes
+
+		// Define the body	
+		var block = self evaluateBlock (f source body)
+		if block isNil
+			ok = false
+			continue
+		end
+		
+		if not self finalizeBody (f, block)
+			ok = false
+			continue
+		end
+
+		f body = block
+		f publicName = self builder getPublicName (f)
+		f composites = self composites
+	end
+	return ok
+
+end
+
+//[of]:finalizeBody
+//[c]Checks that the body is ok, and update the returnTypes of the function 
+//[c]accordingly.
+//[c]
+//[c]RETURN VALUES
+//[c]	False if the body is invalid.
+//[c]
+function finalizeBody (f: *Function, body: *Block)
+
+	// Terminate the body if not terminated or no return type (infinite loop)
+	if not body terminated or self returnTypes isNil
+		if not self merge ('empty)
+			self reportSourceError (f source, 'missingReturn, self returnTypes)
+			return false
+		end
+	end
+
+	// If the type is already set, check that the computed return type is 
+	// compatible with the specified return type.
+	// In case of inline function, the return type may also come from a
+	// previous inlining. In such a case it should be always identical.
+	if f returnTypes notNil
+		// Returns types are defined so it is not required to define them here.	
+		if not self returnTypes match (f returnTypes)
+			self reportSourceError (f source, 'incompatibleReturnTypes, self returnTypes, f returnTypes)
+			return false
+		end
+	else
+		f returnTypes	= self returnTypes
+	end
+
+	f returnCount	= self returnCount
+	return true
+
+end
+//[cf]
+//[cf]
+//[of]:defineExternFunction
+function defineExternFunction (f: *ExternFunction)
+
+	switch f state
+	case 'defined
+		return true
+	case 'invalid
+		return false
+	case 'defining
+		self reportDefinitionError (f, 'recursiveFunctionImport)
+		f state = 'invalid
+		return false
+	else
+		var ok = true
+		f state = 'defining
+		f use
+		self withContext (f scope) do cx
+			f parameterTypes = cx  evaluateSimpleTypesWithContext (f source parameters, f context)
+			if f parameterTypes isNil
+				ok = false
+			end
+			f returnTypes = cx evaluateSimpleTypes (f source returns)
+			if f returnTypes isNil
+				ok = false
+			end
+		end
+
+		// Set the public name
+		// Remark: the type of argument must be successfully defined before
+		if ok and f publicName isNil
+			f publicName = self builder getPublicName (f)
+		end
+		
+		f state = ok cond 'defined else 'invalid
+		return ok
+	end
+
+end
+//[cf]
+//[of]:defineGlobalVariable
+function defineGlobalVariable (v: *GlobalVariable)
+
+	switch v state
+	case 'defined
+		return true
+	case 'invalid
+		return false
+	case 'defining
+		self reportDefinitionError (v, 'infiniteRecursion, v name)
+		v state = 'invalid
+		return false
+	else
+		var ok = true
+		v state = 'defining
+		v use
+		self withContext (v scope) do cx
+		
+			// Evaluate the type if present
+			if v source type notNil
+				var storageType = cx evaluateType (v source type)
+				if storageType isNil
+					ok = false
+					continue
+				end
+				if not cx defineTypeSize (storageType)
+					ok = false
+					continue
+				end
+				v setStorageType (storageType)
+			else
+				// var v = e
+				var initialValue = cx evaluateExpression (v source initialValue, nil)
+				if initialValue isNil
+					ok = false
+					continue
+				end
+				if not cx checkConstant (v source, initialValue)
+					ok = false
+					continue
+				end
+				v setStorageType (initialValue type)
+				v setInitialValue (initialValue)
+			end
+		end
+		v state = ok cond 'defined else 'invalid
+		return ok
+	end
+
+end
+//[cf]
+
+//[of]:defineType
+//[c]Defines the type.
+//[c]
+//[c]It performs 3 operations
+//[c]	* Find the parent type (if any)
+//[c]	* Declare all definitions and symbols
+//[c]	* Compute the size of the type ( + offsets of all components)
+//[c]
+function defineType (type: *Type) : Bool
+
+	switch type state
+	case 'defined
+		return true
+	case 'invalid
+		return false
+	case 'defining
+		var source = type source
+		var line = source notNil cond source line else LineNumber : 'none
+		self reportError (type module filename, line, 'recursiveType, type)
+		type state = 'invalid
+		return false
+	else
+		type state = 'defining
+		var ok : Bool
+		switch type code
+		case 'pointer
+			ok = self definePointer (type asPointer)
+		case 'structure
+			ok = self defineStructure (type asStructure)
+		case 'array
+			ok = self defineArray (type asArray)
+		case 'meta
+			ok = self defineMeta (type asMeta)
+		else
+			ok = self defineOther (type)
+		end
+		type state = ok cond 'defined else 'invalid
+		return ok
+	end
+
+end
+
+//[of]:definePointer
+function definePointer (pointer: *PointerType)
+
+	// The parent must be defined
+	var ok = self defineType (pointer parent)
+
+	// The target must be defined
+	// If the pointer is a subtype, it points to the same target as the 
+	// parent so it is already defined.
+	ok &= self defineType (pointer target)
+
+	// Declare content (subtypes)
+	var source = pointer source
+	if source notNil
+		self withContext (pointer scope) do cx
+			ok &= cx declareContent (source, pointer, pointer metaType)
+		end
+	end
+
+	return ok
+
+end
+//[cf]
+//[of]:defineStructure
+//[c]Defines a structure (non generic)
+//[c]
+//[c]RETURN VALUE
+//[c]	Returns true if the structure is valid.
+//[c]
+function defineStructure (structure: *StructureType) : Bool
+
+	structure use
+
+	var source	= structure source asType
+	var context	= structure pointer
+	var ok	= true
+	
+	self withContext (structure scope) do cx
+		ok &= cx defineStructureParent (structure, source parent)
+		ok &= cx declareContent (source, context, structure metaType)
+
+		// Define the size of each attribute (and detect cycles)
+		structure eachAttribute do attribute
+			ok &= cx defineStructureAttribute (attribute)
+		end
+	end
+
+	if not ok
+		return false
+	end
+	
+	// Compute the size, align and offset of each attribute
+	var sum = Size : 0
+	var alignMax = Size : 1
+
+	var parent = structure parentStructure
+	if parent notNil
+		var align = parent align
+		if align > alignMax
+			alignMax = align
+		end
+		align --
+		sum += align
+		sum &= not align
+		sum += parent size
+	end
+
+	structure eachAttribute do a
+		var st = a storageType
+		var align = st align
+		if align > alignMax
+			alignMax = align
+		end
+		align --
+		sum += align
+		sum &= not align
+		a offset = sum
+		sum += st size
+	end
+
+	structure align = alignMax
+	alignMax --
+	sum += alignMax
+	sum &= not alignMax
+	structure size = sum
+	return true
+
+end
+//[c]
+function defineStructureParent (structure: *StructureType, pe: *ASTExpression)
+
+	if pe isNil
+		return true
+	end
+	
+	var type = self evaluateType (pe)
+	if type isNil
+		return false
+	end
+	
+	if not type isStructure
+		self reportSourceError (pe, 'notStructure, type)
+		return false
+	end
+
+	var parentStructure = type asStructure
+	if not self defineType (parentStructure)
+		return false
+	end
+	
+	structure setParentStructure (parentStructure)
+	return true
+
+end
+//[c]
+function defineStructureAttribute (attribute: *Attribute)
+
+	var storageType = self evaluateType (attribute source type)
+	if storageType isNil
+		return false
+	end
+
+	if not self defineTypeSize (storageType)
+		return false
+	end
+	
+	if storageType size == undefinedSize
+		self reportDefinitionError (attribute, 'undefinedAttributeSize, attribute name)
+		return false
+	end
+	
+	attribute storageType = storageType
+	attribute type	= storageType effective
+	return true
+
+end
+//[cf]
+//[of]:defineArray
+function defineArray (array: *ArrayType)
+
+	var cellType = array cellType
+	if not self defineTypeSize (cellType)
+		return false
+	end
+	
+	array size	= array arraySize * cellType size
+	array align	= cellType align
+	return true
+
+end
+//[cf]
+//[of]:defineMeta
+function defineMeta (metaType: *MetaType) : Bool
+	// Just define the type, it will declare everything for the meta-type
+	return self defineType (metaType type)
+end
+//[cf]
+//[of]:defineOther
+function defineOther (type: *Type)
+
+	// The parent must be defined
+	var parent = type parent
+	var ok = parent isNil or self defineType (type parent)
+	if not ok
+		return false
+	end
+
+	// No content to define: all done
+	var source = type source
+	if source isNil
+		return true
+	end
+	
+	// Declare content (subtypes)
+	self withContext (type scope) do cx
+		ok &= cx declareContent (source, type, type metaType)
+	end
+	return ok
+
+end
+//[cf]
+//[cf]
+//[of]:defineTypeSize
+//[c]Defines the size of the type.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the definition of the type succeeds.
+//[c]
+function defineTypeSize (type: *Type) : Bool
+
+	if type isStructure or type isArray
+		return self defineType (type)
+	else
+		return true
+	end
+
+end
+//[cf]
+//[of]:defineSymbol
+function defineSymbol (type: *Type, start: *Symbol)
+
+	switch start state
+	case 'defined
+		return true
+	case 'invalid
+		return false
+	case 'defining
+		self reportSourceError (start source, 'recursiveSymbol, start)
+		start state = 'invalid
+		return false
+	else
+		var ok = true
+		self withContext (type scope) do cx
+			// Start by marking all enum values as 'defining'
+			type symbols each do v
+				v state = 'defining
+			end
+
+			var currentValue : [1] Uint64
+			currentValue [] = 0
+			type symbols each do v
+				if not cx defineSymbolValue (type, v, currentValue)
+					v state = 'invalid
+					ok = false
+				else
+					v state = 'defined
+				end
+			end
+		end
+		return ok
+	end
+
+end
+
+function defineSymbolValue (type: *Type, symbol: *Symbol, currentValue: *[] Uint64)
+
+	// Evaluate the value if any
+	var source = symbol source
+	var sourceExpression = source expression
+	if sourceExpression notNil
+		// Get the expression
+		var e = self evaluateExpression (sourceExpression, type)
+		if e isNil
+			return false
+		end
+		
+		// It must be a constant
+		if not self checkConstant (sourceExpression, e)
+			return false
+		end
+		
+		// It must be exact type
+		if e type <> type
+			self reportSourceError (sourceExpression, 'invalidSymbolValue)
+			return false
+		end
+		
+		symbol value = e
+		
+		if type isInteger
+			currentValue [] = e asConstantInteger value
+		end
+	else
+		if not type isInteger
+			self reportSourceError (source, 'missingSymbolValue)
+			return false
+		end
+		
+		symbol value = self program getInteger (currentValue [], type)
+	end
+
+	// Next value
+	currentValue [] ++
+	return true
+
+end
+//[cf]
+//[cf]
+//[of]:	evaluating
+// list of expressions
+//[of]:evaluateExpressions
+//[c]Evaluates a list of expressions without any type hints.
+//[c]
+function evaluateExpressions (source: *ASTExpressionList) : *ExpressionList
+
+	// Optimization: use the empty sequence if the source is empty.
+	// This optimization work only if the list is never modified by the caller.
+	if source isEmpty
+		return 'empty
+	end
+	
+	var list = self program getExpressionList
+	source each do a
+		if self evaluateAndExpandExpression (a, nil, list) == -1
+			return nil
+		end
+	end
+	return list
+
+end
+//[cf]
+//[of]:evaluateArguments
+//[c]Evaluates a list of expressions where the expected types are provided by 
+//[c]a list of parameters.
+//[c]
+//[c]PARAMETERS
+//[c]	location	--	The location to report an error for the global list (too many or too few values).
+//[c]	source	--	The source list of expressions
+//[c]	parameters	--	The parameters that provides the types (a type can be nil if the parameter is generic).
+//[c]	isVariadic	--	True if the list can have more arguments than the number of parameters.
+//[c]	context	--	An optional context to add at the beginning of the list.
+//[c]
+//[c]RETURN VALUES
+//[c]	A list of expressions or nil if an error occurred.
+//[c]
+//[c]REMARKS
+//[c]	The types of parameters are just hints to resolve literals, the function 
+//[c]	does not check the compatibility of arguments as the list of types can
+//[c]	be incomplete because of genericity.  The caller will have to check the
+//[c]	compatibility of arguments later.
+//[c]
+function evaluateArguments (	location	: *Location,
+	source	: *ASTExpressionList,
+	parameters	: *ParameterCollection, 
+	isVariadic	: Bool,
+	context	: *Expression)
+
+	var program = self program
+	var arguments = program getExpressionList
+	var p = parameters firstElement
+	var t = Type nil
+	if context notNil
+		p = p nextSibling
+		arguments add (program pool, context)
+		t = context type
+	end
+	source each do a
+		if p notNil and p type notNil
+			t = p type
+		end
+		var n = self evaluateAndExpandExpression (a, t, arguments)
+		if n == -1
+			return nil
+		end
+		while p notNil and n <> 0
+			n --
+			p = p nextSibling
+		end
+		t = arguments last type
+	end
+
+	var expected = parameters size
+	var got = arguments size
+	if isVariadic
+		if got < expected
+			self reportSourceError (location, 'argumentMismatch2, expected, got)
+			return nil
+		end
+	else
+		if got <> expected
+			self reportSourceError (location, 'argumentMismatch, expected, got)
+			return nil
+		end
+	end
+
+	return arguments
+
+end
+//[cf]
+//[of]:evaluateTypedArguments
+//[c]Evaluates a list of expressions where the expected types are provided by
+//[c]a list of types (TypeSequence).
+//[c]
+//[c]PARAMETERS
+//[c]	location	--	The location to report an error for the global list (too many or too few values).
+//[c]	source	--	The source list of expressions.
+//[c]	types	--	The expected type of each value.
+//[c]	context	--	An optional context to add at the beginning of the list.
+//[c]
+//[c]RETURN VALUES
+//[c]	A list of expressions or nil if an error occurred.
+//[c]
+//[c]REMARKS
+//[c]	The compatibility of arguments with the types is checked.
+//[c]
+function evaluateTypedArguments (	location	: *Location, 
+	source	: *ASTExpressionList, 
+	types	: *TypeSequence,
+	context	: *Expression) : *ExpressionList
+
+	// Optimization: use the empty sequence if the source is empty.
+	// This optimization work only if the list is never modified by the caller.
+	if source isEmpty and context isNil
+		return 'empty
+	end
+	
+	var arguments = self program getExpressionList
+	var i = Integer : 0
+	var n = types size
+	if context notNil
+		i ++
+		arguments add (self program pool, context)
+	end
+	source each do a
+		var t = i < n cond types [i] else nil
+		var c = self evaluateAndExpandExpression (a, t, arguments)
+		if c == -1
+			return nil
+		end
+		i += c
+	end
+
+	var expected = types size
+	var got = arguments size
+	if got <> expected
+		self reportSourceError (location, 'argumentMismatch, expected, got)
+		return nil
+	end
+
+	// Check match only when the function is defined as the types of arguments are not known before
+	i = Integer : 0
+	arguments eachElement do element
+		if not self checkCompatible (location, i, element object, types [i])
+			return nil
+		end
+		i ++
+	end
+
+	return arguments
+
+end
+//[cf]
+
+// expression
+//[of]:evaluateAndExpandExpression
+//[c]Evaluates an expression and add it to a list
+//[c]
+//[c]PARAMETERS
+//[c]	source	--	The source expression to evaluate.
+//[c]	type	--	The expected type of the expression or nil.
+//[c]	list	--	The list to add the expression(s) evaluated
+//[c]
+//[c]RETURN VALUES
+//[c]	The number of expressions added to the list, -1 if an error occurred.
+//[c]
+//[c]REMARKS
+//[c]	Composite expressions are expanded and all expressions of the composite
+//[c]	are added to the list.
+//[c]	
+//[c]	Void expressions are not allowed.
+//[c]
+function evaluateAndExpandExpression (	source	: *ASTExpression, 
+	type	: *Type, 
+	list	: *ExpressionList) : Integer
+
+	var e = self evaluateExpression (source, type)
+	if e isNil
+		return -1
+	end
+	
+	if e isVoid
+		self reportSourceError (source, 'cannotBeVoid)
+		return -1
+	end
+	
+	return self expandExpression (list, e)
+
+end
+//[cf]
+//[of]:evaluateCondition
+//[c]Evaluates a boolean expression
+//[c]
+function evaluateCondition (source: *ASTExpression)
+
+	var e = self evaluateExpression (source, self program booleanType)
+	if e isNil
+		return nil
+	end
+	
+	if not e type isBoolean
+		self reportSourceError (source, 'notABooleanExpression)
+		return nil
+	end
+	
+	return e
+
+end
+//[cf]
+//[of]:evaluateExpression
+//[c]Evaluates an expression
+//[c]
+//[c]PARAMETERS
+//[c]	source	-- the source expression
+//[c]	type	-- the source expression is evaluated with this expected type
+//[c]
+//[c]RETURN VALUE
+//[c]	The expression or nil if an error occured.
+//[c]
+function evaluateExpression (source: *ASTExpression, type: *Type) : *Expression
+
+	var program = self program
+	switch source code
+	case 'string
+		return self evaluateString (source asString, type)
+	case 'integer
+		return self evaluateInteger (source asInteger, type)
+	case 'negativeInteger
+		return self evaluateNegativeInteger (source asInteger, type)
+	case 'symbol
+		return self evaluateSymbol (source asSymbol, type)
+	case 'sequence
+		return self evaluateSequence (source asArray, type)
+	case 'freeCall
+		return self evaluateFreeCall (source downcast (*ASTFreeCall))
+	case 'contextCall
+		return self evaluateContextCall (source downcast (*ASTContextCall), type)
+	case 'colon
+		return self evaluateColon (source downcast (*ASTBinary))
+	case 'typeof
+		return self evaluateTypeof (source downcast (*ASTUnary))
+	case 'minimalAnd
+		return self evaluateMinimal (source downcast (*ASTBinary), 'minimalAnd)
+	case 'minimalOr
+		return self evaluateMinimal (source downcast (*ASTBinary), 'minimalOr)
+	case 'functionType
+		return self evaluateFunctionType (source downcast (*ASTFunctionType))
+	case 'arrayType
+		return self evaluateArrayType (source downcast (*ASTArrayType))
+	case 'functionReference
+		return self evaluateFunctionReference (source downcast (*ASTFunctionReference))
+	case 'offset
+		return self evaluateOffset (source downcast (*ASTOffset), type)
+	case 'cond
+		return self evaluateCond (source downcast (*ASTCond), type)
+	case 'ellipsis
+		return self evaluateEllipsis (source)
+	case 'pointer
+		return self evaluatePointer (source downcast (*ASTUnary))
+	case 'yield
+		return self evaluateYield (source downcast (*ASTArray))
+	else
+		assertFailure ("Unsupported expression")
+		return nil
+	end
+
+end
+
+//[of]:evaluateString
+function evaluateString (source: *ASTString, typespace: *Type)
+
+	// No type space: can not guess the type of the string
+	if typespace isNil
+		self reportSourceError (source, 'cantGuessStringType)
+		return nil
+	end
+	
+	// The type must be a pointer
+	if not typespace isPointer
+		self reportSourceError (source, 'notPointer, typespace)
+		return nil
+	end
+
+	var pointerType	= typespace asPointer
+	var targetType	= pointerType target
+	
+	// The type must be a pointer to an array
+	if not targetType isArray
+		self reportSourceError (source, 'notArray, targetType)
+		return nil
+	end
+	
+	var arrayType = targetType asArray
+	var cellType = arrayType cellType
+
+	// The cell type must be an integer
+	if not cellType isInteger
+		self reportSourceError (source, 'typeNotAnInteger, cellType)
+		return nil
+	end
+
+	switch cellType size
+	case 1
+		return self program getString8 (source string, typespace)
+	case 2
+		return self program getString16 (source string, typespace)
+	else
+		self reportSourceError (source, 'invalidStringCharSize, cellType size * 8)
+		return nil
+	end
+
+end
+//[cf]
+//[of]:evaluateInteger
+function evaluateInteger (source: *ASTInteger, type: *Type)
+
+	// No type space: can not guess the type of the integer
+	if type isNil
+		self reportSourceError (source, 'cantGuessIntegerType)
+		return nil
+	end
+
+	if not type isInteger
+		// The integer is not compatible with the typespace
+		self reportSourceError (source, 'invalidIntegerTypespace, type)
+		return nil
+	end
+	
+	// Check limits
+	var n = source integer
+	if not type checkIntegerLimits (n)
+		self reportSourceError (source, 'integerOverflow, type)
+		return nil
+	end
+	
+	return self program getInteger (n, type)
+
+end
+//[cf]
+//[of]:evaluateNegativeInteger
+function evaluateNegativeInteger (source: *ASTInteger, type: *Type)
+
+	// No type space: can not guess the type of the integer
+	if type isNil
+		self reportSourceError (source, 'cantGuessIntegerType)
+		return nil
+	end
+
+	if not type isInteger
+		// The integer is not compatible with the typespace
+		self reportSourceError (source, 'invalidIntegerTypespace, type)
+		return nil
+	end
+
+	// Check limits
+	var n = source integer
+	if not type checkNegativeIntegerLimits (n)
+		self reportSourceError (source, 'integerOverflow, type)
+		return nil
+	end
+	
+	return self program getInteger (-n, type)
+
+end
+//[cf]
+//[of]:evaluateSymbol
+function evaluateSymbol (source: *ASTSymbolName, typespace: *Type)
+
+	// No type space: can not guess the type of the symbol
+	if typespace isNil
+		self reportSourceError (source, 'cantGuessSymbolType)
+		return nil
+	end
+	
+	// The symbol may refer to a type not defined yet
+	var ok = self defineType (typespace)
+	if not ok
+		return nil
+	end
+
+	// Lookup in the dictionary of the typespace
+	var name = source symbol
+	var type = typespace
+	while type notNil
+		var symbol = type findSymbol (name)
+		if symbol notNil
+			var ok = self defineSymbol (type, symbol)
+			if not ok
+				return nil
+			end
+			return symbol value
+		end
+		type = type parent
+	end
+	
+	self reportSourceError (source, 'symbolNotFound, name, typespace)
+	return nil
+
+end
+//[cf]
+//[of]:evaluateSequence
+function evaluateSequence (source: *ASTArray, typespace: *Type)
+
+	// No type space: can not guess the type of the integer
+	if typespace isNil
+		self reportSourceError (source, 'cantGuessArrayType)
+		return nil
+	end
+
+	if not typespace isPointer
+		self reportSourceError (source, 'notPointer, typespace)
+		return nil
+	end
+	var targetType = typespace asPointer target
+	
+	if targetType isStructure
+		return self evaluateStructureInitializer (source, typespace)
+	elsif targetType isArray
+		return self evaluateArrayInitializer (source, typespace)
+	else
+		self reportSourceError (source, 'initializerType, typespace)
+		return nil
+	end
+
+end
+
+//[of]:evaluateStructureInitializer
+//[c]
+//[c]REMARKS
+//[c]	The type must be a pointer to an array.
+//[c]
+function evaluateStructureInitializer (	source	: *ASTArray, 
+	type	: *Type)
+
+	var structure	= type asPointer target asStructure
+	var ok = self defineType (structure)
+	if not ok
+		return nil
+	end
+	
+	var arguments = self program getExpressionList
+	var iter : SequenceIterator
+	iter initialize (arguments, source arguments)
+	if not self checkStructureInitializer (source, structure, iter)
+		return nil
+	end
+
+	if not iter isEOF
+		self reportSourceError (source, 'initializerTooManyValues)
+		return nil
+	end
+
+	var program = self program
+	return program getStructureInitializer (arguments, type, structure)
+
+end
+//[cf]
+//[of]:evaluateArrayInitializer
+//[c]
+//[c]REMARKS
+//[c]	The type must be a pointer to an array.
+//[c]
+function evaluateArrayInitializer (	source	: *ASTArray, 
+	type	: *Type)
+
+	var array = type asPointer target asArray
+	var ok = self defineType (array)
+	if not ok
+		return nil
+	end
+	
+	var arguments = self program getExpressionList
+	var iter : SequenceIterator
+	iter initialize (arguments, source arguments)
+	if not self checkArrayInitializer (source, array, iter)
+		return nil
+	end
+	
+	if not iter isEOF
+		self reportSourceError (source, 'initializerTooManyValues)
+		return nil
+	end
+
+	var program = self program
+	return program getArrayInitializer (arguments, type, array)
+
+end
+//[cf]
+//[of]:checkStructureInitializer
+function checkStructureInitializer (	location	: *Location, 
+	structure	: *StructureType, 
+	iter	: *SequenceIterator) : Bool
+
+	if structure parentStructure notNil
+		if not self checkStructureInitializer (location, structure parentStructure, iter)
+			return false
+		end
+	end
+	
+	// Read the values against attribute
+	structure eachAttribute do a
+		if not self checkInitializer (location, a storageType, iter)
+			return false
+		end
+	end
+
+	return true
+
+end
+//[cf]
+//[of]:checkArrayInitializer
+function checkArrayInitializer (	location	: *Location,
+	type	: *ArrayType,
+	iter	: *SequenceIterator)
+
+	var cellType = type cellType
+	var n = type arraySize
+	var i = Size : 0
+	repeat
+		// automatic size ?
+		if n == 0 
+			if iter isEOF
+				break
+			end
+		elsif i == n
+			break
+		end
+		if not self checkInitializer (location, cellType, iter)
+			return false
+		end
+		i ++
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkInitializer
+function checkInitializer (	location	: *Location,
+	type	: *Type, 
+	iter	: *SequenceIterator) : Bool
+
+	// If the type is an array, check the array
+	if type isArray
+		return self checkArrayInitializer (location, type asArray, iter)
+	end
+	
+	// If the type is a structure, check the structure
+	if type isStructure
+		return self checkStructureInitializer (location, type asStructure, iter)
+	end
+	
+	// Check enough argument
+	if iter isEOF
+		self reportSourceError (location, 'initializerMissingValue)
+		return false
+	end
+
+	// No more expressions available: evaluate the next source expression
+	if iter element isNil
+		var pred = iter arguments lastElement
+		var n = self evaluateAndExpandExpression (iter source, type, iter arguments)
+		if n == -1
+			return false
+		end
+		iter source = iter source nextSibling
+		iter element = pred isNil cond iter arguments firstElement else pred nextSibling
+	end
+	
+	var e = iter element object
+	iter element = iter element nextSibling
+	iter index ++
+	
+	// It must be a constant
+	if not self checkConstant (location, e)
+		return false
+	end
+	
+	if not self checkCompatible (location, iter index, e, type)
+		return false
+	end
+
+	return true
+
+end
+//[cf]
+//[of]:SequenceIterator
+static struct SequenceIterator
+
+	var source	: *ASTExpression	// The next source expression to evaluate
+	var arguments	: *ExpressionList	// Evaluated expressions go there
+	var element	: *CollectionPoolElement (Expression)	// Next expression to pick
+	var index	: Integer
+
+	function initialize (arguments: *ExpressionList, source: *ASTExpressionList)
+		self source = source firstElement
+		self arguments = arguments
+		self element = nil
+		self index = -1
+	end
+
+	function isEOF
+		return self element isNil and self source isNil
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:evaluateFreeCall
+function evaluateFreeCall (src: *ASTFreeCall)
+
+	var definition = self getDefinition (src, src name)
+	if definition isNil
+		return nil
+	end
+
+	return self evaluateDefinition (src, definition, nil)
+
+end
+//[cf]
+//[of]:evaluateContextCall
+function evaluateContextCall (src: *ASTContextCall, type: *Type)
+
+	// Evaluate the receiver
+	var e1 = self evaluateExpression (src context, type)
+	if e1 isNil
+		return nil
+	end
+
+	// Find the definition in the context of the receiver
+	var definition = self getContextualDefinition (src, src name, e1 type)
+	if definition isNil
+		return nil
+	end
+
+	return self evaluateDefinition (src, definition, e1)
+
+end
+//[cf]
+//[of]:evaluateArrayType
+function evaluateArrayType (src: *ASTArrayType)
+	
+	// Get the cell type
+	var cellType = self evaluateType (src cellType)
+	if cellType isNil
+		return nil
+	end
+
+	// Get the optional size
+	var size = Size : 0
+	if src arraySize notNil
+		var e2 = self evaluateExpression (src arraySize, self program sizeType)
+		if e2 isNil
+			return nil
+		end
+		
+		if not e2 isConstantInteger
+			self reportSourceError (src, 'invalidArraySize)
+			return nil
+		end
+
+		size	= e2 constantInteger cast (Size)
+	end
+
+	// Get the array type and return it as an expression
+	return self program getArrayType (cellType, size) expression
+
+end
+//[cf]
+//[of]:evaluateTypeof
+function evaluateTypeof (src: *ASTUnary)
+
+	var e = self evaluateExpression (src argument, nil)
+	if e isNil
+		return nil
+	end
+		
+	if e isVoid
+		// The expression cannot be void
+		self reportSourceError (src, 'cannotBeVoid)
+		return nil
+	end
+	
+	if e isComposite
+		// The expression cannot be a composite
+		self reportSourceError (src, 'cannotBeComposite)
+		return nil
+	end
+
+	// Return a type expression on the type	
+	return e type expression
+
+end
+//[cf]
+//[of]:evaluatePointer
+function evaluatePointer (src: *ASTUnary)
+
+	var type = self evaluateType (src argument)
+	if type isNil
+		return nil
+	end
+		
+	// Get the pointer type of this type
+	var pointerType = type pointer
+	return pointerType expression
+
+end
+//[cf]
+//[of]:evaluateColon
+function evaluateColon (src: *ASTBinary)
+
+	// Evaluate left
+	var expected = self evaluateSimpleType (src argument1)
+	if expected isNil
+		return nil
+	end
+	
+	// Evaluate right
+	var e = self evaluateExpression (src argument2, expected)
+	if e isNil
+		return nil
+	end
+	
+	if not e type match (expected)
+		self reportSourceError (src, 'mismatchArgument, Integer : 1, e type, expected)
+		return nil
+	end
+	
+	return e
+
+end
+//[cf]
+//[of]:evaluateFunctionType
+function evaluateFunctionType (source: *ASTFunctionType)
+
+	var types = self evaluateSimpleTypes (source parameters)
+	if types isNil
+		return nil
+	end
+	
+	var rtypes = self evaluateSimpleTypes (source returnTypes)
+	if rtypes isNil
+		return nil
+	end
+	
+	// Get the function type
+	var program = self program
+	var ftype = program getFunctionType (source callingConvention, types, rtypes)
+	var ptype = ftype pointer
+
+	return ptype expression
+
+end
+//[cf]
+//[of]:evaluateFunctionReference
+function evaluateFunctionReference (source: *ASTFunctionReference)
+
+	// Get the definition
+	var context = Type nil
+	var definition : *Definition
+	if source context notNil
+		context = self evaluateType (source context)
+		if context isNil
+			return nil
+		end
+		definition = self getContextualDefinition (source, source name, context)
+	else
+		definition = self getDefinition (source, source name)
+	end
+	if definition isNil
+		return nil
+	end
+
+	var types = self evaluateSimpleTypesWithContext (source types, context)
+	if types isNil
+		return nil
+	end
+
+	if definition code == 'genericFunction
+		var g = definition asGenericFunction
+
+		// Define the object now: the type of non generic parameters must be resolved
+		var ok = self defineGenericFunction (g)
+		if not ok
+			return nil
+		end
+		
+		definition = self getFunctionInstanceFromTypes (g, types)
+	end
+	
+	switch definition code 
+	case 'function 
+		var f = definition asFunction
+		if f isMacro
+			self reportSourceError (source, 'iteratorReference, f)
+			return nil
+		end
+		var ok = self defineFunctionType (f)
+		if not ok
+			return nil
+		end
+		if not self checkExactParameters (source, f parameters, types)
+			return nil
+		end
+		return self program getFunctionReference (f, types)
+	case 'externFunction
+		var f = definition asExternFunction
+		var ok = self defineExternFunction (f)
+		if not ok
+			return nil
+		end
+		if not self checkExactTypes (source, f parameterTypes, types)
+			return nil
+		end
+		return self program getFunctionReference (f, types)
+	else
+		self reportSourceError (source, 'notAFunction, source name)
+		return nil
+	end
+
+end
+
+//[of]:checkExactParameters
+function checkExactParameters (	location	: *Location, 
+	parameters	: *ParameterCollection,
+	argumentTypes	: *TypeSequence)
+
+	var expected = parameters size
+	var got = argumentTypes size
+	if expected <> got
+		self reportSourceError (location, 'argumentMismatch, expected, got)
+		return false
+	end
+	
+	var i = Index : 0
+	var ok = true
+	var p = parameters firstElement
+	argumentTypes each do type
+		ok &= self checkExact (location, i, type, p type)
+		p = p nextSibling
+		i ++
+	end
+	return ok
+
+end
+//[cf]
+//[of]:checkExactTypes
+function checkExactTypes (	location	: *Location, 
+	parameterTypes	: *TypeSequence,
+	argumentTypes	: *TypeSequence)
+
+	var expected = parameterTypes size
+	var got = argumentTypes size
+	if expected <> got
+		self reportSourceError (location, 'argumentMismatch, expected, got)
+		return false
+	end
+	
+	var i = Index : 0
+	var ok = true
+	argumentTypes each do type
+		ok &= self checkExact (location, i, type, parameterTypes [i])
+		i ++
+	end
+	return ok
+
+end
+//[cf]
+//[of]:checkExact
+function checkExact (	location	: *Location, 
+	position	: Integer, 
+	type	: *Type, 
+	expected	: *Type )
+
+	if type <> expected
+		self reportSourceError (location, 'mismatchArgument, position + 1, type, expected)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[cf]
+//[of]:evaluateCond
+function evaluateCond (source: *ASTCond, type: *Type)
+
+	// Evaluate the expressions
+	// expressions are independent and can be all evaluated without checking
+	// the broken status
+	var c	= self evaluateCondition (source condition)
+	var a1	= self evaluateCondExpressions (source, source arguments1, type)
+	var a2	= self evaluateCondExpressions (source, source arguments2, type)
+	if c isNil or a1 isNil or a2 isNil
+		return nil
+	end
+
+	// Compute the types
+	var program = self program
+	var pool = program pool
+	var types = TypeSequence fromExpressions (pool, a1)
+	var ok = types merge (a2)
+	if not ok
+		self reportSourceError (source, 'incompatibleCondValues, a1 asTypes, a2 asTypes)
+		return nil
+	end
+
+	// Create the cond expression
+	return program getCond (c, a1, a2, types)
+
+end
+
+//[of]:evaluateCondExpressions
+//[c]Evaluates a list of expressions, but expressions can not be types
+//[c]
+function evaluateCondExpressions (location: *Location, source: *ASTExpressionList, type: *Type)
+
+	var list = self program getExpressionList
+	source each do a
+		if self evaluateAndExpandExpression (a, type, list) == -1
+			return nil
+		end
+	end
+	
+	if list isEmpty
+		self reportSourceError (location, 'cannotBeEmpty)
+		return nil
+	end
+	
+	list each do e
+		if not self checkNoType (location, e)
+			return nil
+		end
+		if not self defineType (e type)
+			return nil
+		end
+	end
+
+	return list
+
+end
+//[cf]
+//[cf]
+//[of]:evaluateMinimal
+function evaluateMinimal (source: *ASTBinary, code: ExpressionCode)
+
+	var a1 = self evaluateCondition (source argument1)
+	var a2 = self evaluateCondition (source argument2)
+	if a1 isNil or a2 isNil
+		return nil
+	end
+	
+	var program = self program
+	if a1 isConstantInteger
+		var c	= a1 constantInteger <> 0
+		if code == 'minimalAnd
+			return c cond a2 else program getFalse
+		else
+			return c cond program getTrue else a2
+		end
+	else
+		return program getBinary (code, program booleanType, a1, a2)
+	end
+
+end
+//[cf]
+//[of]:evaluateEllipsis
+function evaluateEllipsis (source: *ASTExpression)
+
+	if not self checkVargs (source)
+		return nil
+	end
+
+	var program = self program
+	return program getVargs (self extra)
+
+end
+//[cf]
+//[of]:evaluateOffset
+function evaluateOffset (source: *ASTOffset, type: *Type)
+
+	// Get the expression
+	var e = self evaluateExpression (source type, type)
+	if e isNil
+		return nil
+	end
+	
+	if not e isType
+		// Get the type	
+		var type = e type
+		if not type isPointer
+			self reportSourceError (source, 'notPointer, type)
+			return nil
+		end
+		type = type asPointer target
+		
+		// Find the attribute
+		var attribute = self getAttribute (source, type)
+		if attribute isNil
+			return nil
+		end
+		
+		// Create the expression :
+		//  ((e : *[]Uint8) + offset) : *T
+		var program	= self program
+		var offset	= program getInteger (attribute offset cast (Uint64), program sizeType)
+		var byteptr	= program getArrayType (program uint8Type, 0) pointer
+		var base	= program getUnary ('cast, byteptr, e)
+		var addr	= program getBinary ('arrayAdd, byteptr, base, offset)
+		var addrType	= attribute storageType pointer
+		var value	= program getUnary ('cast, addrType, addr)
+		return value
+		
+	// It is a type
+	else
+		var type = e asType type
+		var attribute = self getAttribute (source, type)
+		if attribute isNil
+			return nil
+		end
+	
+		return self program getInteger (attribute offset cast (Uint64), self program sizeType)
+	end
+
+end
+//[cf]
+//[of]:evaluateYield
+function evaluateYield (source: *ASTArray)
+
+	if self macroContext isNil
+		self reportSourceError (source, 'invalidYield)
+		return nil
+	end
+	
+	// Get the arguments
+	var arguments = self evaluateExpressions (source arguments)
+	if arguments isNil
+		return nil
+	end
+
+	// Check the arguments
+	arguments each do e
+		if not self checkNoType (source, e)
+			return nil
+		end
+	end
+
+	// Check the number of arguments
+	var sourceBlock = self macroContext sourceBlock
+	var got = sourceBlock parameters size
+	var expected = arguments size
+	if expected <> got
+		self reportSourceError (source, 'parameterMismatch, expected, got)
+		return nil
+	end
+
+	// Create the block that will contains the block closure
+	var block = self program getMacroBlock
+
+	// Now the block closure must be evaluated in the parent context, i.e. the 
+	// function that has invoked the macro, not the context of the macro
+	var cx = self parent
+
+	// Create the context for 'break' and 'continue' statements in the block closure
+	var bc : BreakContext
+	bc initializeBlock (self, block)
+
+	cx withBreakContext (bc) do
+		cx withBlock (block) do
+			// Declare parameters
+			zip (sourceBlock parameters, arguments) do p, a
+				var d : *Definition
+				if a isConstant or a isLocalVariable or a isParameter
+					// if the expression is a constant, a local variable or a parameter, just evaluate it.
+					d = cx program getLocalAlias (cx module, p line, p name, a)
+				else
+					// otherwise evaluate it and store it in a local variable
+					d = cx createVariable (p line, p name, a type, a)
+				end
+				if not cx addLocalDefinition (d)
+					return nil
+				end
+			end
+			
+			if not cx evaluateInstructions (sourceBlock instructions)
+				return nil
+			end
+			
+			if bc types isNil
+				bc types = 'empty
+			elsif not block terminated
+				if not bc types merge ('empty)
+					self reportSourceError (self macroContext location, 'missingContinue, bc types)
+					return nil
+				end
+			end
+		end
+	end
+	
+	// Create and return the inline expression
+	return self program getMacroCall (bc types, block)
+
+end
+//[cf]
+//[cf]
+//[of]:evaluateDefinition
+function evaluateDefinition (src: *ASTFreeCall, definition: *Definition, e1: *Expression)
+
+	switch definition code
+	// Free or Contextual
+//[of]:	generic function
+	case 'genericFunction
+		// 1. Define the object now: the type of non generic parameters must be resolved
+		var g = definition asGenericFunction
+		if not self defineGenericFunction (g)
+			return nil
+		end
+	
+		// 2. Read arguments
+		var arguments = self evaluateArguments (src, src arguments, g parameters, g isVariadic, e1)
+		if arguments isNil
+			return nil
+		end
+
+		// Get the function instance corresponding to g and arguments	
+		var f = self getFunctionInstance (g, arguments)
+	
+		// Define the object now: the type of parameters must be resolved
+		if f state == 'invalid
+			// Do not report an error if we already know that the callee is invalid
+			return nil
+		end
+		
+		if not self defineFunctionType (f)
+			// If the callee is invalid, the caller function is invalid too
+			// Report an error again to show the caller and mark it as invalid
+			self reportSourceError (src, 'cantDefineFunction, f)
+			return nil
+		end
+	
+		return self evaluateCall (src, f, arguments)
+//[cf]
+//[of]:	generic type
+	case 'genericType
+		// A generic structure does not need to be defined here as the type of
+		// parameters are initialized to nil and are all nil.
+		
+		if src block notNil
+			self reportSourceError (src, 'unexpectedBlock)
+			return nil
+		end
+	
+		var g = definition asGenericType
+		var arguments = self evaluateArguments (src, src arguments, g parameters, false, nil)
+		if arguments isNil
+			return nil
+		end
+		
+		// Ensure that all arguments are valid constants
+		// (must be either a type or a constant)
+		arguments each do a
+			if not a isType and not a isConstant
+				self reportSourceError (src, 'parameterNotAValidConstant, g name)
+				return nil
+			end
+		end
+	
+		// Is there already an instance of this structure ?
+		var type = g findInstance (arguments)
+		if type isNil
+			// Create a structure from the generic one
+			type = self instanciateType (g, arguments)
+			if type isNil
+				return nil
+			end
+	
+			// Add it to the list of instances of the generic structure
+			g add (type)
+		end
+		
+		return type expression
+//[cf]
+//[of]:	function
+	case 'function
+		var f = definition asFunction
+
+		// 1. Define the object now: the type of parameters must be resolved
+		if f state == 'invalid
+			// Do not report an error if we already know that the callee is invalid
+			return nil
+		end
+		
+		if not self defineFunctionType (f)
+			// If the callee is invalid, the caller function is invalid too
+			// Report an error again to show the caller and mark it as invalid
+			self reportSourceError (src, 'cantDefineFunction, f)
+			return nil
+		end
+		
+		// 2. Read arguments
+		var arguments = self evaluateArguments (src, src arguments, f parameters, false, e1)
+		if arguments isNil
+			return nil
+		end
+	
+		return self evaluateCall (src, f, arguments)
+//[cf]
+//[of]:	extern function
+	case 'externFunction
+		if src block notNil
+			self reportSourceError (src, 'unexpectedBlock)
+			return nil
+		end
+
+		var f = definition asExternFunction
+		if not self defineExternFunction (f)
+			return nil
+		end
+	
+		var arguments = self evaluateTypedArguments (src, src arguments, f parameterTypes, e1)
+		if arguments isNil
+			return nil
+		end
+	
+		return self program getExternFunctionCall (f, arguments)
+//[cf]
+//[of]:	global variable
+	case 'globalVariable
+		if not self checkNoArgument (src)
+			return nil
+		end
+		var v = definition asGlobalVariable
+		if not self defineGlobalVariable (v)
+			return nil
+		end
+		return v expression
+//[cf]
+//[of]:	alias
+	case 'alias
+		if not self checkNoArgument (src)
+			return nil
+		end
+		var a = definition asAlias
+		if not self defineAlias (a)
+			return nil
+		end
+		return a expression
+//[cf]
+//[of]:	type
+	case 'type
+		if not self checkNoArgument (src)
+			return nil
+		end
+		return definition asType type expression
+//[cf]
+//[of]:	subtype
+	case 'subtype
+		if not self checkNoArgument (src)
+			return nil
+		end
+	
+		// The definition must be defined to access the type
+		var s = definition asSubType
+		var type = s type
+		if type isNil
+			type = self createSubType (s scope, s source, nil)
+			if type isNil
+				return nil
+			end
+			s type = type
+		end
+		
+		return type expression
+//[cf]
+
+	// Free
+//[of]:	function parameter
+case 'functionParameter
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return definition asParameter expression
+//[cf]
+//[of]:	block parameter
+case 'vargParameter
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return definition asVargParameter expression
+//[cf]
+//[of]:	local alias
+case 'localAlias
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return definition asLocalAlias expression
+//[cf]
+//[of]:	variable
+case 'variable
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return definition asVariable expression
+//[cf]
+//[of]:	type argument
+case 'typeArgument
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return definition asTypeArgument value
+//[cf]
+//[of]:	true
+case 'true
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return self program getTrue
+//[cf]
+//[of]:	false
+case 'false
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return self program getFalse
+//[cf]
+//[of]:	nil
+case 'nil
+	if not self checkNoArgument (src)
+		return nil
+	end
+	return self program getNil
+//[cf]
+//[of]:	vargs each
+case 'vargsEach
+
+	// Check that there are variable arguments in the current context, 
+	// i.e. that the current function has a '...' parameter.
+	if not self checkVargs (src)
+		return nil
+	end
+
+	// Check the number of block parameters
+	var srcBlock = src block
+	if srcBlock isNil
+		self reportSourceError (src, 'missingBlock)
+		return nil
+	end
+	var n = srcBlock parameters size
+	var expected = Index : 1
+	if n <> expected
+		self reportSourceError (src, 'parameterMismatch, expected, n)
+		return nil
+	end
+
+	// All inline blocks are evaluated into a single block and this block 
+	// will become the block of the sequence
+	var ok = true
+	var block = self program getBlock
+	self withBlock (block) do
+		self eachExtraParameter do e
+			// Use a scope for each extra parameter
+			self withScope do
+				// Define the block parameter: a definition that evaluates to 
+				// the function parameter
+				var id = srcBlock parameters firstElement
+				var d = self program getVargParameter (self module, id, e)
+				// It is not necessary to check the result of the declaration: 
+				// it is the first definition in the scope so it cannot conflict
+				// with another definition.
+				self addLocalDefinition (d)
+				
+				// Evaluate the block
+				ok &= self evaluateInstructions (srcBlock instructions)
+			end
+		end
+	end
+	if not ok
+		return nil
+	end
+
+	return self program getVargsEach (block)
+//[cf]
+//[of]:	vargs size
+case 'vargsSize
+	if not self checkNoArgument (src)
+		return nil
+	end
+	
+	// Check that there are variable arguments in the current context, 
+	// i.e. that the current function has a '...' parameter.
+	if not self checkVargs (src)
+		return nil 
+	end
+
+	// Count extra parameters
+	var n = Uint64 : 0
+	self eachExtraParameter do e
+		n ++
+	end
+
+	return self program getInteger (n, self program uint32Type)
+//[cf]
+
+	// Contextual
+//[of]:	attribute
+case 'attribute
+	if not self checkNoArgument (src)
+		return nil
+	end
+	
+	return self program getAttribute (e1, definition asAttribute)
+//[cf]
+//[of]:	super
+case 'super
+	if not self checkNoArgument (src)
+		return nil
+	end
+	
+	var t1 = e1 type
+	var parent = t1 parent
+	
+	if parent isNil or not parent hasSize
+		self reportSourceError (src, 'noParent, t1)
+		return nil
+	end
+		
+	return self program getUnary ('super, parent, e1)
+//[cf]
+//[of]:	upcast
+case 'upcast
+	// Get the type argument
+	var type = self evaluateCastArgument (src)
+	if type isNil
+		return nil
+	end
+	
+	if not e1 type match (type)
+		self reportSourceError (src, 'mismatchArgument, Integer : 1, e1 type, type)
+		return nil
+	end
+
+	return self getCast (src, e1, type)
+//[cf]
+//[of]:	downcast
+case 'downcast
+	// Get the type argument
+	var type = self evaluateCastArgument (src)
+	if type isNil
+		return nil
+	end
+	
+	if not type match (e1 type)
+		self reportSourceError (src, 'mismatchArgument, Integer : 1, type, e1 type)
+		return nil
+	end
+
+	return self getCast (src, e1, type)
+//[cf]
+//[of]:	cast
+case 'cast
+	// Get the type argument
+	var type = self evaluateCastArgument (src)
+	if type isNil
+		return nil
+	end
+	
+	return self getCast (src, e1, type)
+//[cf]
+//[of]:	meta size
+case 'metaSize
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	var type = e1 asType type
+	var ok = self defineTypeSize (type)
+	if not ok
+		return nil
+	end
+
+	// It is not valid to ask the size of a type without size
+	if not type hasSize
+		self reportSourceError (src, 'typeHasNoSize, type)
+		return nil
+	end
+	
+	return self program getInteger (type size cast (Uint64), self program sizeType)
+//[cf]
+//[of]:	meta nil
+case 'metaNil
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	// Get the type of the first expression
+	var type = e1 asType type
+	return self program getTypedNil (type pointer)
+//[cf]
+//[of]:	meta super
+case 'metaSuper
+	if not self checkNoArgument (src)
+		return nil
+	end
+	
+	// Get the type
+	var type = e1 asType type
+	
+	var parent = type parent
+	
+	if parent isNil
+		self reportSourceError (src, 'noParent, type)
+		return nil
+	end
+		
+	return parent expression
+//[cf]
+//[of]:	meta target
+case 'metaTarget
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	// Get the type
+	var type = e1 asType type
+	
+	// The type must be a pointer
+	if not type isPointer
+		self reportSourceError (src, 'notPointer, type)
+		return nil
+	end
+
+	var pointerType = type asPointer
+	var targetType = pointerType target
+	return targetType expression
+//[cf]
+//[of]:	meta cell
+case 'metaCell
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	// Get the type
+	var type = e1 asType type
+	
+	// The type must be a pointer
+	if not type isArray
+		self reportSourceError (src, 'notArray, type)
+		return nil
+	end
+
+	var arrayType = type asArray
+	var cellType = arrayType cellType
+	return cellType expression
+//[cf]
+//[of]:	meta vtable
+case 'metaVtable
+
+	// Get the vtable type	
+	var vtableSource = self evaluateArgument (src, nil)
+	if vtableSource isNil
+		return nil
+	end
+
+	// It must be a type
+	if not vtableSource isType
+		self reportSourceError (src, 'notType)
+		return nil
+	end
+
+	// The type must be defined	
+	var vtableType = vtableSource asType type
+	if not self defineType (vtableType)
+		return nil
+	end
+
+	// Get the type
+	var type = e1 asType type
+
+	// The type must be defined	
+	if not self defineType (type)
+		return nil
+	end
+	
+	if not type isStructure
+		self reportSourceError (src, 'notStructure, type)
+		return nil
+	end
+	var structure = type asStructure
+
+	var program = self program
+	var arguments = program getExpressionList
+	if not self fillStructure (src, arguments, structure, vtableType)
+		return nil
+	end
+
+	return program getStructureInitializer (arguments, structure pointer, structure)
+//[cf]
+
+//[of]:	integer arithmetic
+case	'integerArithmetic
+
+	var t1 = e1 type
+	var e2 = self evaluateCompatibleArgument (src, t1)
+	if e2 isNil
+		return nil
+	end
+
+	// If both values are constants, evaluate
+	var code = definition asOperation ecode
+	if e1 isConstantInteger and e2 isConstantInteger
+		var n1	= e1 constantInteger
+		var n2	= e2 constantInteger
+		var result	= t1 evaluateIntegerBinaryOperation (n1, n2, code)
+		return self program getInteger (result, t1)
+	else
+		return self program getBinary (code, t1, e1, e2)
+	end
+//[cf]
+//[of]:	integer shift
+case	'integerShift
+
+	var e2 = self evaluateCompatibleArgument (src, self program uint8Type)
+	if e2 isNil
+		return nil
+	end
+	var t1 = e1 type
+	
+	// If both values are constant, evaluate
+	var code = definition asOperation ecode
+	if e1 isConstantInteger and e2 isConstantInteger
+		var n1	= e1 constantInteger
+		var n2	= e2 constantInteger
+		var result	= t1 evaluateIntegerBinaryOperation (n1, n2, code)
+		return self program getInteger (result, t1)
+	else
+		return self program getBinary (code, t1, e1, e2)
+	end
+//[cf]
+//[of]:	integer comparison
+case	'integerComparison
+
+	var t1 = e1 type
+	var e2 = self evaluateCompatibleArgument (src, t1)
+	if e2 isNil
+		return nil
+	end
+	
+	// If both values are constant, evaluate
+	var code = definition asOperation ecode
+	if e1 isConstantInteger and e2 isConstantInteger
+		var n1	= e1 constantInteger
+		var n2	= e2 constantInteger
+		var result	= t1 evaluateIntegerBinaryComparison (n1, n2, code)
+		return self program getBoolean (result)
+	else
+		return self program getBinary (code, self program booleanType, e1, e2)
+	end
+//[cf]
+//[of]:	integer unary
+case	'integerUnary
+
+	if src block notNil
+		self reportSourceError (src, 'unexpectedBlock)
+		return nil
+	end
+
+	var t1	= e1 type
+
+	// If the value is constant, evaluate
+	var code = definition asOperation ecode
+	if e1 isConstantInteger
+		var n	= e1 constantInteger
+		var result	= t1 evaluateIntegerUnaryOperation (n, code)
+		return self program getInteger (result, t1)
+	else
+		return self program getUnary (code, t1, e1)
+	end
+//[cf]
+//[of]:	integer assign arithmetic
+case	'integerAssignArithmetic
+
+	var e2 = self evaluateCompatibleArgument (src, e1 type)
+	if e2 isNil
+		return nil
+	end
+	
+	if not self checkLvalue (src, e1)
+		return nil
+	end
+	
+	var op = definition asOperation
+	return self program getBinary (op ecode, self program voidType, e1, e2)
+//[cf]
+//[of]:	integer increment
+case	'integerIncrement
+
+	if src block notNil
+		self reportSourceError (src, 'unexpectedBlock)
+		return nil
+	end
+
+	if not self checkLvalue (src, e1)
+		return nil
+	end
+	
+	var op = definition asOperation
+	return self program getUnary (op ecode, self program voidType, e1)
+//[cf]
+//[of]:	integer assign shift
+case	'integerAssignShift
+
+	var e2 = self evaluateCompatibleArgument (src, self program uint8Type)
+	if e2 isNil
+		return nil
+	end
+
+	if not self checkLvalue (src, e1)
+		return nil
+	end
+
+	var op = definition asOperation
+	return self program getBinary (op ecode, self program voidType, e1, e2)
+//[cf]
+
+//[of]:	boolean not
+case 'booleanNot
+
+	if src block notNil
+		self reportSourceError (src, 'unexpectedBlock)
+		return nil
+	end
+
+	var t1	= e1 type
+
+	// If the value is constant, evaluate
+	if e1 isConstantInteger
+		var n	= e1 constantInteger
+		var result	= n ^ 1
+		return self program getInteger (result, t1)
+	else
+		return self program getUnary ('booleanNot, t1, e1)
+	end
+//[cf]
+
+//[of]:	pointer comparison
+case	'pointerComparison
+
+	var t1 = e1 type
+	var e2 = self evaluateArgument (src, t1)
+	if e2 isNil
+		return nil
+	end
+
+	var t2	= e2 type
+
+	// Types must be defined in order to know hierarchy
+	if not self defineType (t1)
+		return nil
+	end
+	
+	if not self defineType (t2)
+		return nil
+	end
+	
+	// Either the first expression matches the second one or the second one matches the first one
+	if not (t1 match (t2) or t2 match (t1))
+		self reportSourceError (src, 'invalidPointerComparison, t1, t2)
+		return nil
+	end
+
+	var op = definition asOperation
+	return self program getBinary (op ecode, self program booleanType, e1, e2)
+//[cf]
+//[of]:	pointer dereference
+case 'pointerDereference
+
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	// Get the effective type of the target
+	var pointerType = e1 type asPointer
+	var type = pointerType target
+
+	// It must be a simple type
+	if not type isSimple
+		self reportSourceError (src, 'notASimpleType, type)
+		return nil
+	end
+
+	return self program getUnary ('pointerDereference, type, e1)
+//[cf]
+//[of]:	pointer call
+case 'pointerCall
+
+	if src block notNil
+		self reportSourceError (src, 'unexpectedBlock)
+		return nil
+	end
+
+	var pointerType	= e1 type asPointer
+	var targetType	= pointerType target
+
+	if not targetType isFunction
+		self reportSourceError (src, 'notPointerToFunction, pointerType)
+		return nil
+	end
+
+	var functionType = targetType asFunction
+	var types = functionType types
+	
+	// Read arguments
+	var arguments = self evaluateTypedArguments (src, src arguments, types, nil)
+	if arguments isNil
+		return nil
+	end
+
+	var returnTypes = functionType returnTypes
+	return self program getPointerCall (e1, arguments, returnTypes)
+//[cf]
+//[of]:	pointer isNil
+case 'pointerIsNil
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	var program = self program
+	return program getBinary ('integerEq, program booleanType, e1, program getNil)
+//[cf]
+//[of]:	pointer notNil
+case 'pointerNotNil
+	if not self checkNoArgument (src)
+		return nil
+	end
+
+	var program = self program
+	return program getBinary ('integerNe, program booleanType, e1, program getNil)
+//[cf]
+
+//[of]:	array index
+case	'arrayIndex
+
+	var pointerType	= e1 type asPointer
+	var arrayType	= pointerType target asArray
+	var cellType	= arrayType cellType
+	var type	= cellType effective
+	var program	= self program
+	
+	var index : *Expression
+	if src arguments isEmpty
+		if src block notNil
+			self reportSourceError (src, 'unexpectedBlock)
+			return nil
+		end
+	
+		index = program getInteger (0, program sizeType)
+	else
+		index = self evaluateArgument (src, program sizeType)
+		if index isNil
+			return nil
+		end
+		// The index must be an integer (any size, signed/unsigned accepted)
+		if not self checkInteger (src, index type)
+			return nil
+		end
+	end
+	
+	return program getBinary ('arrayIndex, type, e1, index)
+//[cf]
+//[of]:	array add
+case	'arrayAdd
+
+	var index = self evaluateArgument (src, self program sizeType)
+	if index isNil
+		return nil
+	end
+	
+	// The index must be an integer (any size, signed/unsigned accepted)
+	if not self checkInteger (src, index type)
+		return nil
+	end
+
+	return self program getBinary ('arrayAdd, e1 type, e1, index)
+//[cf]
+//[of]:	array sub
+case	'arraySub
+
+	var index = self evaluateArgument (src, self program sizeType)
+	if index isNil
+		return nil
+	end
+	
+	// The index must be an integer (any size, signed/unsigned accepted)
+	if not self checkInteger (src, index type)
+		return nil
+	end
+	
+	return self program getBinary ('arraySub, e1 type, e1, index)
+//[cf]
+//[of]:	array distance
+case	'arrayDistance
+
+	var index = self evaluateArgument (src, nil)
+	if index isNil
+		return nil
+	end
+	
+	var indexType	= index type
+	if indexType <> e1 type
+		self reportSourceError (src, 'invalidArrayDiffType, indexType, e1 type)
+		return nil
+	end
+	
+	return self program getBinary ('arrayDistance, self program sizeType, e1, index)
+//[cf]
+//[of]:	array assign arithmetic
+case	'arrayAssignArithmetic
+
+	var index	= self evaluateArgument (src, self program sizeType)
+	if index isNil
+		return nil
+	end
+	
+	if not self checkInteger (src, index type)
+		return nil 
+	end
+	if not self checkLvalue (src, e1)
+		return nil 
+	end
+	
+	var op = definition asOperation
+	return self program getBinary (op ecode, self program voidType, e1, index)
+//[cf]
+	else
+		assertFailure ("Unsupported definition")
+		return nil
+	end
+	
+end
+
+//[of]:evaluateCastArgument
+function evaluateCastArgument (src: *ASTFreeCall)
+
+	// Evaluate argument
+	var e = self evaluateArgument (src, nil)
+	if e isNil
+		return nil
+	end
+
+	// It must be a type
+	if not e isType
+		self reportSourceError (src, 'notType)
+		return nil
+	end
+	var type = e asType type
+	
+	// It must be a simple type
+	if not type isSimple
+		self reportSourceError (src, 'notASimpleType, type)
+		return nil
+	end
+
+	// It must be defined (need to know parent for upcast and downcast)
+	if not self defineType (type)
+		return nil
+	end
+	
+	return type
+
+end
+//[cf]
+//[of]:evaluateCompatibleArgument
+//[c]Evaluates the second argument of a context call and check that it is compatible with the given type
+//[c]
+//[c]PARAMETERS
+//[c]	source	-- the context call source expression
+//[c]	type	-- the expected type of the argument
+//[c]
+//[c]RETURN VALUES
+//[c]	The argument or nil if error.
+//[c]	
+//[c]REMARKS
+//[c]	The function also returns an error if the context call has a block.
+//[c]
+function evaluateCompatibleArgument (source: *ASTFreeCall, type: *Type)
+	
+	var e = self evaluateArgument (source, type)
+	if e isNil
+		return nil
+	end
+	
+	if not self checkCompatible (source, 1, e, type)
+		return nil
+	end
+
+	return e
+
+end
+//[cf]
+//[of]:evaluateArgument
+//[c]Evaluates the second argument of a context call and check that there is no 
+//[c]block argument on the call.
+//[c]
+//[c]PARAMETERS
+//[c]	source	-- the context call source expression
+//[c]	typeStream	-- the expected type of the argument
+//[c]
+//[c]RETURN VALUES
+//[c]	The argument or nil if error.
+//[c]	
+//[c]REMARKS
+//[c]	The function also returns an error if the context call has a block.
+//[c]
+function evaluateArgument (source: *ASTFreeCall, type: *Type)
+
+	// There must be no block
+	if source block notNil
+		self reportSourceError (source, 'unexpectedBlock)
+		return nil
+	end
+
+	var arguments : ExpressionList
+	arguments initialize
+	source arguments each do a
+		if self evaluateAndExpandExpression (a, type, arguments) == -1
+			return nil
+		end
+	end
+
+	var got = arguments size
+	var expected = Index : 1
+	if got <> expected
+		self reportSourceError (source, 'argumentMismatch, expected, got)
+		return nil
+	end
+
+	return arguments first
+
+end
+//[cf]
+//[of]:evaluateCall
+function evaluateCall (	src	: *ASTFreeCall, 
+	f	: *Function,
+	arguments	: *ExpressionList)
+
+	// Check that each argument is compatible with the type of the parameter
+	var i = Index : 0
+	zip (arguments, f parameters) do a, p
+		if not self checkCompatible (src, i, a, p type)
+			return nil
+		end
+		i ++
+	end
+
+	var program = self program
+	var sourceBlock = src block
+	if not f isMacro
+		if sourceBlock notNil
+			self reportSourceError (src, 'unexpectedBlock)
+			return nil
+		end
+		return program getFunctionCall (f, arguments)
+	else
+		if sourceBlock isNil
+			self reportSourceError (src, 'missingBlock)
+			return nil
+		end
+		return self evaluateMacroCall (src, f, arguments, sourceBlock)
+	end
+
+end
+
+//[of]:evaluateMacroCall
+function evaluateMacroCall (	src	: *ASTFreeCall, 
+	f	: *Function,
+	arguments	: *ExpressionList,
+	sourceBlock	: *ASTBlockClosure)
+
+	if self hasMacro (f)
+		self reportDefinitionError (f, 'circularDependency, f name)
+		return nil
+	end
+
+	assert (f state == 'defined, "Macro should have been defined with defineFunctionType")
+	
+	var block = self program getMacroBlock
+
+	// Create the macro context
+	var inline : MacroContext
+	inline location = src
+	inline macro = f
+	inline block = block
+	inline sourceBlock = sourceBlock
+
+	// Create a context to evaluate the macro
+	var cx	: BuilderContext
+	cx initialize (self, self builder, f scope, self builder getLocalPool, inline)
+	cx fixedReturnTypes = f returnTypes
+	defer self builder releaseLocalPool
+	
+	cx withBlock (block) do
+		if not cx defineInlineParameters (f, arguments)
+			return nil
+		end
+
+		if not cx evaluateInstructions (f source body)
+			return nil
+		end
+
+		if not block terminated or cx returnTypes isNil
+			if not cx merge ('empty)
+				self reportSourceError (f source, 'missingReturn, cx returnTypes)
+				return nil
+			end
+		end
+	end
+
+	// Move all child's composites to parent.
+	// Find the last element of the parent's list and append the head of
+	// the child's list. It is not efficient, O(n), but composites are 
+	// considered rare enough to avoid slowing down the general case.
+	var p = self @ composites
+	while p [] notNil
+		p = p [] @ nextComposite
+	end
+	p [] = cx composites
+	
+	// Create and return the inline expression
+	return self program getMacroCall (cx returnTypes, block)
+
+end
+
+//[of]:defineInlineParameters
+//[c]Defines the function parameters with the given list of arguments
+//[c]
+function defineInlineParameters (macro: *Function, arguments: *ExpressionList)
+
+	var a = arguments firstElement
+	var ok = true
+	
+	// Declare all function parameters as variables or aliases
+	macro eachNamedParameter do fp
+		var e = a object
+		var d : *Definition
+		// We can alias only if the expression has the exact same type
+		// otherwise we could use the wrong definitions on the parameter
+		if e type == fp type and (e isConstant or e isParameter or e isType)
+			d = self program getLocalAlias (self module, fp line, fp name, e)
+		else
+			d = self createVariable (fp line, fp name, fp type, e)
+		end
+		ok &= self addLocalDefinition (d)
+		a = a nextSibling
+	end
+	
+	// There are extra arguments
+	if macro isVariadic
+		var pool = self pool
+		self extra = pool new (ExpressionList)
+		while a notNil
+			var e = a object
+			var variable = self createVariable (macro source line, nil, e type, e)
+			self extra add (pool, variable expression)
+			a = a nextSibling
+		end
+	end
+
+	return ok
+
+end
+//[cf]
+//[cf]
+//[cf]
+//[of]:fillStructure
+//[c]Fills the list of arguments according to the given structure: for each 
+//[c]attribute of the structure, a contextual function or a constant with the 
+//[c]same name is searched in the given context.
+//[c]* If a constant is found, the value is added to the list of arguments
+//[c]* If a function is found, the reference is added ot the list of arguments
+//[c]
+//[c]This is used by the 'T vtable (S)' construct to generate automatically 
+//[c]initializers for virtual tables.
+//[c]
+//[c]The function is recursive, it recurses on the ancestors of the structure in
+//[c]order to scall all attributes.
+//[c]
+//[c]The structure and the context types must be both defined.
+//[c]
+function fillStructure (	location	: *Location, 
+	arguments	: *ExpressionList, 
+	structure	: *StructureType,
+	context	: *Type) : Bool
+
+	var ok = true
+	
+	if structure parentStructure notNil
+		ok &= self fillStructure (location, arguments, structure parentStructure, context)
+	end
+	
+	structure eachAttribute do a
+		var name = a name
+		var d = self getContextualDefinition (location, name, context)
+		if d isNil
+			ok = false
+			continue
+		end
+		
+		var e = self evaluateDefinitionForInitializer (location, d)
+		if e isNil
+			ok = false
+			continue
+		end
+		
+		if not e type match (a type)
+			self reportSourceError (location, 'mismatchArgument, name, e type, a type)
+			ok = false
+			continue
+		end
+
+		arguments add (self program pool, e)
+	end
+	
+	return ok
+
+end
+
+function evaluateDefinitionForInitializer (location: *Location, definition: *Definition)
+
+	switch definition code
+	case 'alias
+		var a = definition asAlias
+		if not self defineAlias (a)
+			return nil
+		end
+		return a expression
+	case 'function
+		var f = definition asFunction
+		if f isMacro
+			self reportSourceError (location, 'iteratorReference, f)
+			return nil
+		end
+		if not self defineFunctionType (f)
+			return nil
+		end
+		var types = TypeSequence fromParameters (self program pool, f parameters)
+		return self program getFunctionReference (f, types)
+	case 'externFunction
+		var f = definition asExternFunction
+		if not self defineExternFunction (f)
+			return nil
+		end
+		return self program getFunctionReference (f, f parameterTypes)
+	else
+		self reportSourceError (location, 'invalidVtableDefinition, definition name)
+		return nil
+	end
+
+end
+//[cf]
+//[of]:eachExtraParameter
+function eachExtraParameter
+	self extra each do e
+		yield e
+	end
+end
+//[cf]
+//[of]:checkNoArgument
+function checkNoArgument (src: *ASTFreeCall)
+
+	// Check that there is no argument
+	if src arguments notEmpty
+		self reportSourceError (src, 'noArgument, src name)
+		return false
+	end
+
+	// Check that there is no block
+	if src block notNil
+		self reportSourceError (src, 'unexpectedBlock)
+		return false
+	end
+
+	return true
+
+end
+//[cf]
+//[cf]
+
+// list of types
+//[of]:evaluateSimpleTypes
+function evaluateSimpleTypes (source: *ASTExpressionList)
+
+	var pool = self program pool
+	var types = TypeSequence new (pool, source size)
+	var i = Index : 0
+	source each do s
+		var type = self evaluateSimpleType (s)
+		if type isNil
+			return nil
+		end
+		types set (i, type)
+		i ++
+	end
+	return types
+
+end
+//[cf]
+//[of]:evaluateSimpleTypesWithContext
+function evaluateSimpleTypesWithContext (source: *ASTExpressionList, context: *Type)
+
+	var n = source size
+	if context notNil
+		n ++
+	end
+
+	var pool = self program pool
+	var types = TypeSequence new (pool, n)
+	var i = Index : 0
+	
+	if context notNil
+		types set (i, context)
+		i ++
+	end
+	
+	source each do s
+		var type = self evaluateSimpleType (s)
+		if type isNil
+			return nil
+		end
+		types set (i, type)
+		i ++
+	end
+
+	return types
+
+end
+//[cf]
+
+// type
+//[of]:evaluateSimpleType
+//[c]Same as 'evaluate constant type' but the type must be a simple type
+//[c]
+function evaluateSimpleType (source: *ASTExpression) : *Type
+
+	var type = self evaluateType (source)
+	if type isNil
+		return nil
+	end
+	
+	// It must be a simple type
+	if not type isSimple
+		self reportSourceError (source, 'notASimpleType, type)
+		return nil
+	end
+	
+	return type
+
+end
+//[cf]
+//[of]:evaluateType
+function evaluateType (source: *ASTExpression) : *Type
+
+	// Get the expression
+	var e = self evaluateExpression (source, nil)
+	if e isNil
+		return nil
+	end
+	
+	// It must be a type
+	if not e isType
+		self reportSourceError (source, 'notType)
+		return nil
+	end
+	
+	return e asType type
+
+end
+//[cf]
+
+// instructions
+//[of]:evaluateBlock
+//[c]Evaluates a blocks
+//[c]
+//[c]RETURN VALUES
+//[c]	The block or nil if the block is invalid.
+//[c]
+function evaluateBlock (source: *ASTInstructionList) : *Block
+
+	var program = self program
+	var block = program getBlock
+	var ok = true
+	self withBlock (block) do
+		ok = self evaluateInstructions (source)
+	end
+	if not ok
+		return nil
+	end
+	return block
+
+end
+//[cf]
+//[of]:evaluateInstructions
+//[c]Evaluates a list of instructions
+//[c]
+//[c]RETURN VALUES
+//[c]	False if an instruction is invalid
+//[c]
+function evaluateInstructions (source: *ASTInstructionList)
+
+	source each do i
+		// We are not expecting more instruction in the block
+		if self terminated
+			self reportSourceError (i, 'instructionNeverExecuted)
+			return false
+		end
+		
+		if not self evaluateInstruction (i)
+			// Do not try to evaluate the rest of the block
+			// as some variables could be missing, resulting too many errors
+			return false
+		end
+	end
+
+	return true
+
+end
+
+//[of]:evaluateInstruction
+//[c]Evaluates an instruction
+//[c]
+//[c]PARAMETER
+//[c]	source	--	The source instruction
+//[c]
+//[c]RETURN VALUES
+//[c]	True if no error
+//[c]	
+function evaluateInstruction (source: *ASTInstruction) : Bool
+
+	switch source code
+	case 'evaluate
+		return self evaluateEvaluate (source downcast (*ASTEvaluate))
+	case 'assign
+		return self evaluateAssign (source downcast (*ASTAssign))
+	case 'define
+		return self evaluateLocalVariables (source downcast (*ASTLocalVariables))
+	case 'variable
+		return self evaluateLocalVariable (source downcast (*ASTLocalVariable))
+	case 'alias
+		return self evaluateLocalAlias (source downcast (*ASTLocalAlias))
+	case 'return
+		return self evaluateReturn (source downcast (*ASTReturn))
+	case 'if
+		return self evaluateIf (source downcast (*ASTIf))
+	case 'while
+		return self evaluateWhile (source downcast (*ASTWhile))
+	case 'break
+		return self evaluateBreak (source downcast (*ASTBreak))
+	case 'continue
+		return self evaluateContinue (source downcast (*ASTBreak))
+	case 'switch
+		return self evaluateSwitch (source downcast (*ASTSwitch))
+	case 'begin
+		return self evaluateBegin (source downcast (*ASTBegin))
+	case 'defer
+		return self evaluateDefer (source downcast (*ASTDefer))
+	else
+		assertFailure ("Unsupported instruction")
+		return false
+	end
+
+end
+
+//[of]:evaluateEvaluate
+function evaluateEvaluate (source: *ASTEvaluate)
+
+	var list = self program getExpressionList
+	source values each do a
+		var e = self evaluateExpression (a, nil)
+		if e isNil
+			return false
+		end
+		self expandExpression (list, e)
+	end
+	
+	if not self checkMustCheck (source, list)
+		return false
+	end
+
+	self block createInstruction (EvaluateInstruction, self module, source line, list)
+	return true
+
+end
+//[cf]
+//[of]:evaluateAssign
+function evaluateAssign (source: *ASTAssign)
+
+	// Evaluate left values
+	var lvalues = self evaluateExpressions (source leftValues)
+	if lvalues isNil
+		return false
+	end
+	
+	// Evaluate right values
+	var rvalues = self program getExpressionList
+	var d = lvalues firstElement
+	source rightValues each do a
+		var t = d notNil cond d object type else nil
+		var n = self evaluateAndExpandExpression (a, t, rvalues)
+		if n == -1
+			return false
+		end
+		d = d skip (n)
+	end
+	
+	// Check that the number of values is the same as the number of variables
+	var leftNumber	= lvalues size
+	var rightNumber	= rvalues size
+	if leftNumber <> rightNumber
+		self reportSourceError (source, 'assignMismatch, rightNumber, leftNumber)
+		return false
+	end
+
+	// Ensure that each pair are compatibles and each left expression can be assigned
+	var pos = Index : 0
+	var riter = rvalues firstElement
+	lvalues each do lvalue
+		// The loop works only if left expressions are singletons, and
+		// l-value expressions are always singleton. We must interrupt the 
+		// loop as the expression may not be a singleton.
+		if not self checkLvalue (source, lvalue)
+			return false
+		elsif not self checkCompatible (source, pos, riter object, lvalue type)
+			return false 
+		end
+		riter = riter nextSibling
+		pos ++
+	end
+	
+	// Create the assign instruction
+	self block createInstruction (AssignInstruction, self module, source line, lvalues, rvalues)
+	return true
+
+end
+//[cf]
+//[of]:evaluateLocalVariables
+//[c]var v1, v2, ... = e1, ...
+//[c]
+function evaluateLocalVariables (source: *ASTLocalVariables)
+
+	// Get the right values
+	var rvalues = self evaluateExpressions (source expressions)
+	if rvalues isNil
+		return false
+	end
+	
+	// Check that the number of values is the same as the number of variables
+	var valueNumber = rvalues size
+	var variableNumber = source variables size
+	if valueNumber <> variableNumber
+		self reportSourceError (source, 'variableMismatch, valueNumber, variableNumber)
+		return false
+	end
+
+	// Create the variables
+	var ok = true
+	zip (source variables, rvalues) do id, value
+		if not self checkNoType (source, value)
+			ok = false
+			continue
+		end
+		var v = self createVariable (id line, id name, value type, value)
+		ok &= self addLocalDefinition (v)
+	end
+	return ok
+
+end
+//[cf]
+//[of]:evaluateLocalVariable
+//[c]var v : T [, id (...) ]
+//[c]
+function evaluateLocalVariable (source: *ASTLocalVariable)
+
+	var type = self evaluateType (source type)
+	if type isNil
+		return false
+	end
+
+	if not self defineTypeSize (type)
+		return false
+	end
+
+	var module = self module
+	var block = self block
+	var v = block createVariable (module, source line, source variable, type)
+	if not self addLocalDefinition (v)
+		return false
+	end
+	
+	if source call notNil
+		// There is an initializer: let's evaluate it and let's add a deferred release
+		
+		// Get the receiver
+		var e1 = v expression
+
+		// Evaluate the initializer
+		if not self evaluateFinit (source call, e1, block)
+			return false
+		end
+
+		// Evaluate the finalizer (if e1 has a release method)
+		if self hasRelease (e1 type)
+			// Create a fake call to the destructor
+			var dest : ASTFreeCall
+			dest line	= source call line
+			dest name	= identifiers release
+			dest arguments	= 'empty
+			dest block	= nil
+	
+			var i = self block createInstruction (DeferInstruction, self module, dest line)
+			if not self evaluateFinit (dest, e1, i block)
+				return false
+			end
+		end
+	end
+	
+	return true
+
+end
+
+//[of]:evaluateFinit
+//[c]Invokes the initializer or finalizer.
+//[c]
+//[c]PARAMETERS
+//[c]	call	--	The source definition of the call to the initializer or finalizer.
+//[c]	e1	--	The receiver.
+//[c]	block	--	The block to add the evaluation of the call as an instruction.
+//[c]
+function evaluateFinit (call: *ASTFreeCall, e1: *Expression, block: *Block)
+
+	// Find the definition of the call in the context of e1
+	var definition = self getContextualDefinition (call, call name, e1 type)
+	if definition isNil
+		return false
+	end
+
+	// Evaluate the call with e1 as context
+	var e = self evaluateDefinition (call, definition, e1)
+	if e isNil
+		return false
+	end
+
+	// Create a list of expression with the single call
+	var list = self program getExpressionList
+	self expandExpression (list, e)
+
+	// As the result is ignored, ensure it does not have a 'must check'
+	if not self checkMustCheck (call, list)
+		return false
+	end
+
+	// Add it as an expression to the block
+	block createInstruction (EvaluateInstruction, self module, call line, list)
+	return true
+
+end
+//[cf]
+//[of]:hasRelease
+function hasRelease (context: *Type)
+
+	// Note: it is not needed to define the type of the context,
+	// there has been already a lookup of the initializer, so the type
+	// is already defined.
+	
+	var type = context
+	while type notNil
+		if type findDefinition (identifiers release) notNil
+			return true
+		end
+		type = type parent
+	end
+	return false
+
+end
+//[cf]
+//[cf]
+//[of]:evaluateLocalAlias
+function evaluateLocalAlias (source: *ASTLocalAlias)
+
+	var e = self evaluateExpression (source expression, nil)
+	if e isNil
+		return false
+	end
+	
+	if not e isType and not e isConstant
+		self reportSourceError (source, 'notConstantValue)
+		return false
+	end
+
+	var d = self program getLocalAlias (self module, source line, source name, e)
+	return self addLocalDefinition (d)
+	
+end
+//[cf]
+//[of]:evaluateReturn
+function evaluateReturn (source : *ASTReturn)
+	return self evaluateReturnOrBreak (source, source expressions, self)
+end
+//[cf]
+//[of]:evaluateIf
+function evaluateIf (source: *ASTIf)
+
+	var terminator = true
+	var ok = true
+	var i = self block createInstruction (IfInstruction, self module, source line)
+	
+	// Evaluate each condition / action
+	source rules each do rule
+		var condition = self evaluateCondition (rule condition)
+		var block = self evaluateBlock (rule block)
+		if condition isNil or block isNil
+			ok = false
+			continue
+		end
+		// Create the compiled rule and add it to the instruction
+		i addRule (self module, rule line, condition, block)
+		// If the block is not terminated, the instruction can not be a terminator
+		terminator &= block terminated
+	end
+	
+	if source elseBlock notNil
+		var block = self evaluateBlock (source elseBlock)
+		if block isNil
+			ok = false
+		else
+			i elseBlock = block
+			terminator &= block terminated
+		end
+	else
+		// No else block: the instruction is not a terminator
+		terminator = false
+	end
+
+	if not ok
+		return false
+	end
+
+	// Mark the block as terminated if the instruction is a terminator (i.e.
+	// all control paths are terminators).
+	if terminator
+		self terminate
+	end
+	
+	return true
+
+end
+//[cf]
+//[of]:evaluateWhile
+function evaluateWhile (source: *ASTWhile)
+
+	var i	= self block createInstruction (WhileInstruction, self module, source line)
+	
+	// Evaluate the condition if there is one (repeat is just a while
+	// without condition).
+	var s = source condition
+	if s notNil
+		var c = self evaluateCondition (s)
+		if c isNil
+			return false
+		end
+		i condition = c
+	end
+	
+	// Evaluate the block
+	var bc : BreakContext
+	bc initializeWhile (i)
+	self withBreakContext (bc) do
+		i block = self evaluateBlock (source block)
+	end
+	if i block isNil
+		return false
+	end
+
+	// If the instruction is a repeat but the block has a
+	// break, the instruction is not a terminator
+	if i condition isNil and not i hasBreak
+		self terminate
+	end
+		
+	return true
+
+end
+//[cf]
+//[of]:evaluateBreak
+function evaluateBreak (source: *ASTBreak)
+
+	// Find the break context
+	var bc = self breakContext
+	if bc isNil
+		self reportSourceError (source, 'breakNoLoop)
+		return false
+	end
+	var i = bc instruction
+	if i notNil
+		// It is a break in a 'while' statement
+		
+		// Check that the break has no argument
+		if source arguments notEmpty
+			self reportSourceError (source, 'unexpectedBreakArguments)
+			return false
+		end
+		
+		i hasBreak = true
+
+		self block createInstruction (BreakInstruction, self module, source line, InstructionCode : 'break, i)
+		self terminate
+		return true
+	else
+		// It is a break in a block closure
+		return self evaluateReturnOrBreak (source, source arguments, bc context)
+	end
+	
+end
+//[cf]
+//[of]:evaluateContinue
+function evaluateContinue (source: *ASTBreak)
+
+	// Find the break context
+	var bc = self breakContext
+	if bc isNil
+		self reportSourceError (source, 'continueNoLoop)
+		return false
+	end
+	var i = bc instruction
+	if i notNil
+		// It is a continue in a 'while' statement
+		
+		// Check that the break has no argument
+		if source arguments notEmpty
+			self reportSourceError (source, 'unexpectedContinueArguments)
+			return false
+		end
+		
+		i hasContinue = true
+
+		self block createInstruction (BreakInstruction, self module, source line, InstructionCode : 'continue, i)
+		self terminate
+		return true
+	else
+		// It is a continue in the block closure
+		
+		// Read the list of expressions
+		var expressions =	self evaluateExpressions (source arguments)
+		if expressions isNil
+			return false
+		end
+		
+		// The type of expressions must be defined (we need to know parents to merge types)
+		expressions each do e
+			if not self checkNoType (source, e)
+				return false
+			end
+			if not self defineType (e type)
+				return false
+			end
+		end
+	
+		// Update the type of the yield
+		if bc types isNil
+			bc types = TypeSequence fromExpressions (self module program pool, expressions)
+		elsif not bc types merge (expressions)
+			self reportSourceError (source, 'incompatibleReturnTypes, expressions asTypes, bc types)
+			return false
+		end
+		
+		self block createInstruction (LeaveInstruction, self module, source line, bc block, expressions)
+		self terminate
+		return true
+	end
+	
+end
+//[cf]
+//[of]:evaluateSwitch
+function evaluateSwitch (source: *ASTSwitch)
+
+	// Evaluate the value
+	var expression = self evaluateExpression (source value, nil)
+	if expression isNil
+		return false
+	end
+
+	if not expression type isInteger
+		self reportSourceError (source, 'notANumericalExpression)
+		return false
+	end
+	
+	var terminator = true
+	var hasElseBlock = false
+	var ok = true
+	var i = self block createInstruction (SwitchInstruction, self module, source line, expression)
+
+	// Evaluate each case
+	source choices each do sourceChoice
+		// Evaluate each value
+		var values = self program getExpressionList
+		var type = expression type
+		sourceChoice values each do a
+			if self evaluateAndExpandExpression (a, type, values) == -1
+				ok = false
+			end
+		end
+
+		if values isEmpty
+			self reportSourceError (sourceChoice, 'cannotBeEmpty)
+			ok = false
+			continue
+		end
+		
+		// Evaluate the block
+		var block = self evaluateBlock (sourceChoice block)
+		if block isNil
+			ok = false
+			continue
+		end
+
+		// Create and add the choice
+		i addChoice (self program, sourceChoice line, values, block)
+		// If the block is not terminated, the instruction can not be a terminator
+		terminator &= block terminated
+		// Perform additional checks on values: it must be constants and must be
+		// compatible with the type of the switch expression.
+		var position = Index : 0
+		values eachElement do element
+			var value = element object
+			ok &= self checkConstant (sourceChoice, value)
+			if not self checkCompatible (sourceChoice, position, value, expression type)
+				ok = false
+			end
+			position ++
+		end
+	end
+
+	// Evaluate the else block
+	if source elseBlock notNil
+		var block = self evaluateBlock (source elseBlock)
+		if block isNil
+			ok = false
+		else
+			i elseBlock = block
+			// If the block is not terminated, the instruction can not be a terminator
+			terminator &= block terminated
+		end
+	else
+		terminator = false
+	end
+	
+	// Check for duplicates
+	// This is performed here because 'self builder integerConstants' is common to 
+	// all switches and switch statements can be nested
+	if ok
+		self builder integerConstants removeAll
+		i eachChoice do choice
+			choice values each do v
+				var constant = v downcast (*IntegerExpression)
+				if self builder integerConstants has (constant)
+					self reportSourceError (choice, 'switchDuplicate)
+					ok = false
+					continue
+				end
+				self builder integerConstants add (constant)
+			end
+		end
+	end
+	
+	// Mark the block as terminated if the instruction is a terminator (i.e.
+	// all control paths are terminators).
+	if terminator
+		self terminate
+	end
+
+	i terminated = terminator
+	return ok
+
+end
+//[cf]
+//[of]:evaluateBegin
+function evaluateBegin (source: *ASTBegin)
+
+	// Evaluate the block
+	var block = self evaluateBlock (source mainBlock)
+	if block isNil
+		return false
+	end
+
+	// Compute the terminator flag
+	if block terminated
+		self terminate
+	end
+		
+	self block createInstruction (BlockInstruction, self module, source line, block)
+	return true
+
+end
+//[cf]
+//[of]:evaluateDefer
+function evaluateDefer (source: *ASTDefer)
+
+	var i = self block createInstruction (DeferInstruction, self module, source line)
+	var ok = true
+	self withBlock (i block) do
+		ok = self evaluateInstruction (source instruction)
+	end
+	return ok
+
+end
+//[cf]
+//[of]:evaluateReturnOrBreak
+//[c]This code is shared between a return statement and the break for a macro 
+//[c]because a break in the closure of a macro call is equivalent to a return 
+//[c]inside the macro.
+//[c]
+//[c]PARAMETERS
+//[c]	location	--	Location of the 'return' or 'break' statement.
+//[c]	source	--	Expressions after the 'return' or 'break' statement.
+//[c]	returnContext	--	The context where the 'return' or 'break' statement applies:
+//[c]			- return	:	it is the current context
+//[c]			- break	:	it is the child context (we're inside the expansion 
+//[c]					of the yield, in the parent context).
+//[c]					This child context is specified in the break's context.
+//[c]			This context contains the pre-defined return types of the function 
+//[c]			(fixedReturnTypes) and the current computed return types, the 
+//[c]			merge of all returns.
+//[c]			
+function evaluateReturnOrBreak (location: *Location, source: *ASTExpressionList, returnContext: *BuilderContext)
+
+	// Read the list of expressions
+	var expressions =	returnContext fixedReturnTypes notNil	cond	self evaluateTypedArguments (location, source, returnContext fixedReturnTypes, nil) else
+				self evaluateExpressions (source)
+	if expressions isNil
+		return false
+	end
+	
+	// The type of expressions must be defined (we need to know parents to merge types)
+	expressions each do e
+		if not self checkNoType (location, e)
+			return false
+		end
+		if not self defineType (e type)
+			return false
+		end
+	end
+
+	// Update the signature of the function/macro
+	var ok = returnContext merge (expressions)
+	if not ok
+		self reportSourceError (location, 'incompatibleReturnTypes, expressions asTypes, self returnTypes)
+		return false
+	end
+	
+	// Flag the block as terminated
+	self terminate
+
+	// Generate the instruction
+	// If the break/return statement applies to a macro, a return-from-macro 
+	// instruction is created instead
+	var inline = returnContext macroContext
+	if inline isNil
+		self block createInstruction (ReturnInstruction, self module, location line, expressions)
+	else
+		self block createInstruction (LeaveInstruction, self module, location line, inline block, expressions)
+	end
+	return true
+
+end
+//[cf]
+//[cf]
+//[cf]
+//[cf]
+//[of]:	utils
+//[of]:getCast
+function getCast (location: *Location, value: *Expression, targetType: *Type)
+
+	var type = value type
+	
+	// Nothing to do if the target type is the same as the source type
+	if targetType == type
+		return value
+	end
+	
+	// Integer conversion ?
+	if value isConstantInteger
+		var n = value asConstantInteger value
+		return self program getInteger (n, targetType)
+	end
+
+	// Map type -> type class where type classes is:
+	//	0 integer
+	//	1 size
+	//	2 bool
+	//	3 ptr
+	var map = *[] Integer : {
+		0,	// 'meta
+		0,	// 'nil
+		0,	// 'any
+		0,	// 'void
+		0,	// 'composite
+		2,	// 'boolean
+		0,	// 'integer
+		0,	// 'unsigned
+		1,	// 'size
+		3,	// 'pointer
+		0,	// 'structure
+		0,	// 'array
+		0 }	// 'function
+	var org = map [type code]
+	var dst = map [targetType code]
+	switch org * 4 + dst
+	case	0 * 4 + 0,	// integer -> integer
+		0 * 4 + 1,	// integer -> size
+		1 * 4 + 0,	// size -> integer
+		1 * 4 + 1,	// size -> size
+		1 * 4 + 3,	// size -> ptr
+		2 * 4 + 2,	// bool -> bool
+		3 * 4 + 1,	// ptr -> size
+		3 * 4 + 3	// ptr -> ptr
+	
+		// Ok
+		var program = self program
+		return program getUnary ('cast, targetType, value)
+	else
+		self reportSourceError (location, 'invalidCast, type, targetType)
+		return nil
+	end
+
+end
+//[cf]
+//[of]:getAttribute
+function getAttribute (source: *ASTOffset, type: *Type)
+
+	// The type must be a structure
+	if not type isStructure
+		self reportSourceError (source, 'notStructure, type)
+		return nil
+	end
+	var structure = type asStructure
+	
+	// Define the structure
+	var ok = self defineTypeSize (structure)
+	if not ok
+		return nil
+	end
+
+	// Find the attribute
+	var name = source name
+	var attribute = structure findAttribute (name)
+	if attribute isNil
+		self reportSourceError (source, 'unknownAttribute, name)
+		return nil
+	end
+
+	return attribute
+
+end
+//[cf]
+//[of]:getDefinition
+//[c]Searches for a non contextual definition
+//[c]
+function getDefinition (source: *Location, name: Identifier)
+
+	var definition = self scope lookupDefinition (name)
+	if definition isNil
+		self reportSourceError (source, 'noMatchingDefinition, name)
+		return nil
+	end
+
+	return definition
+
+end
+//[cf]
+//[of]:getContextualDefinition
+//[c]Searches for a non contextual definition
+//[c]
+function getContextualDefinition (	source	: *Location,
+	name	: Identifier,
+	context	: *Type )
+
+	if context state <> 'defined
+		var ok = self defineType (context)
+		if not ok
+			return nil
+		end
+	end
+		
+	var type = context
+	while type notNil
+		var item = type findDefinition (name)
+		if item notNil
+			var definition = item definition
+			if item visibility == 'private
+				var s = self base
+				while s <> definition scope
+					s = s parent
+					if s isNil
+						self reportSourceError (source, 'privateContextDefinition, name, context)
+						return nil
+					end
+				end
+			end
+			return definition
+		end
+		type = type parent
+	end
+
+	self reportSourceError (source, 'noMatchingContextDefinition, name, context)
+	return nil
+
+end
+//[cf]
+//[of]:getFunctionInstanceFromTypes
+//[c]Finds or create a function instance for a given generic function and a given 
+//[c]list of types.
+//[c]
+function getFunctionInstanceFromTypes (generic: *GenericFunction, types: *TypeSequence)
+
+	// Create a fake list of arguments with required types as functions 
+	// works with arguments instead of types
+	var program = self program
+	var pool = self pool
+	var arguments = program getExpressionList
+	types each do type
+		var e = pool allocate (Expression)
+		e initialize ('constantInteger, type)	// The code has no effect
+		arguments add (pool, e)
+	end
+
+	return self getFunctionInstance (generic, arguments)
+
+end
+//[cf]
+//[of]:getFunctionInstance
+//[c]Finds or create a function instance for a given generic function and a given 
+//[c]list of arguments.
+//[c]
+//[c]The generic function must be defined (non generic parameters must have the
+//[c]type set).
+//[c]
+function getFunctionInstance (generic: *GenericFunction, arguments: *ExpressionList)
+
+	// Is there already an instance of this function ?
+	var f = generic findInstance (arguments)
+	if f notNil
+		return f
+	end
+
+	// Create the function
+	f = self program createFunction (	generic scope, 
+		generic source, 
+		generic context)
+	
+	// Add it to the list of instances of the generic
+	generic addInstance (f)
+	
+	var source = generic source
+	
+	// Index on types
+	var i = arguments firstElement
+	
+	// Index on generic parameters
+	var j = generic parameters firstElement
+	
+	// Self parameter
+	if generic context notNil
+		var generalizable = true
+		var type = generic context
+		if source selfGeneric
+			generalizable = false
+			type = i object type
+		end
+		f createParameter (source line, identifiers self, type, generalizable)
+		i = i nextSibling
+		j = j nextSibling
+	end
+
+	// Named parameters	
+	source parameters each do p
+		if p type isNil
+			// The parameter is generic: use the type from the argument.
+			// It won't accept sub-types, i.e. if the generic is invoked 
+			// with a sub-type, a new instance will be generated.
+			f createParameter (p line, p name, i object type, false)
+		else
+			// The parameter has a type: evaluate it and use it
+			f createParameter (p line, p name, j type, true)
+		end
+		i = i nextSibling
+		j = j nextSibling
+	end
+	
+	// Extra parameters
+	while i notNil
+		f createParameter (source line, nil, i object type, false)
+		i = i nextSibling
+	end
+
+	return f
+
+end
+//[cf]
+//[of]:instanciateType
+//[c]Instanciates a structure from a generic structure and a list of parameters
+//[c]
+function instanciateType (	generic	: *GenericType, 
+	arguments	: *ExpressionList)
+
+	var module = generic module
+	var scope = generic scope
+	var source = generic source
+	
+	if source code == 'struct or source code == 'metaStruct
+
+		var type = self program createStructure (scope, source, arguments)
+		
+		if not self defineParameters (module, type scope, arguments, source parameters)
+			return nil
+		end
+		
+		return type
+
+	else
+		// With a sub-type, the parent type must be known at creation because 
+		// we must know whether to create a BuiltinType or a PointerType and 
+		// we must known the code (boolean, integer, pointer, ...).
+		//
+		// As the parent may reference parameters, the arguments must be
+		// evaluated in a dedicated scope.
+
+		var pool = self program pool
+		var argscope = pool new (Scope, scope, module, pool, Integer : 8)
+		
+		if not self defineParameters (module, argscope, arguments, source parameters)
+			return nil
+		end
+		
+		return self createSubType (argscope, source, arguments)
+	end
+
+end
+
+function defineParameters (	module	: *Module,
+	scope	: *Scope,
+	arguments	: *ExpressionList,
+	parameters	: *ASTParameterList)
+
+	// Create the arguments, add it to the scope
+	zip (arguments, parameters) do argument, parameter
+		var definition = self program getTypeArgument (module, parameter, argument)
+		var conflictingDefinition = scope addDefinition (definition)
+		if conflictingDefinition notNil
+			self reportDefinitionError (definition, 'conflictingDefinition1, definition name)
+			if conflictingDefinition hasLocation
+				self reportDefinitionError (conflictingDefinition, 'conflictingDefinition2)
+			end
+			return false
+		end
+	end
+
+	return true
+
+end
+//[cf]
+//[of]:createVariable
+//[c]Creates a local variable and assign a value.
+//[c]
+//[c]PARAMETERS
+//[c]	line	-- The line of definition.
+//[c]	name	-- The name of the variable.
+//[c]	type	-- The type of the variable.
+//[c]	value	-- The value.
+//[c]
+//[c]RETURN VALUES
+//[c]	The newly created variable.
+//[c]
+function createVariable (	line	: LineNumber,
+	name	: Identifier,
+	type	: *Type,
+	value	: *Expression )
+
+	var block = self block
+	
+	// Create and add the variable to the block
+	var variable = block createVariable (self module, line, name, type)
+	
+	// Assign the value to the variables
+	block createInstruction (VariableInstruction, self module, line, variable, value)
+
+	return variable
+
+end
+//[cf]
+//[of]:createSubType
+function createSubType (	scope	: *Scope, 
+	source	: *ASTType, 
+	arguments	: *ExpressionList)
+
+	var program = self program
+	var parent : *Type
+	var sourceParent = source parent
+	if sourceParent isNil
+		parent = program int32Type
+	else
+		self withContext (scope) do cx
+			parent = cx evaluateSimpleType (sourceParent)
+		end
+		if parent isNil
+			return nil
+		end
+	end
+	
+	var type : *Type
+	switch parent code
+	case 'boolean, 'integer, 'unsigned, 'size
+		type = program getBuiltinType (scope, parent, parent code, parent size, source name)
+	case 'pointer
+		type = program getPointerType (scope, parent asPointer target, parent, source name)
+	else
+		self reportError (scope module filename, source line, 'unsupportedSubtype, parent)
+		return nil
+	end
+	type source = source
+	type arguments = arguments
+	return type
+
+end
+//[cf]
+//[of]:expandExpression
+function expandExpression (list: *ExpressionList, e: *Expression) : Integer
+
+	if e isVargs
+		var size = Integer : 0
+		e asVargs expressions each do x
+			list add (self program pool, x)
+			size ++
+		end
+		return size
+	elsif e isComposite
+		var size = Integer : 0
+		var c = e asComposite
+		c nextComposite = self composites
+		self composites = c
+		
+		var n = c types size
+		var program = self program
+		n each do i
+			list add (program pool, program getSelect (c, i, c types [i]))
+			size ++
+		end
+		return size
+	else
+		// Add a void expression as a normal expression: it must be evaluated anyway
+		list add (self program pool, e)
+		return 1	// If we accept void, it is counted as one because it is not expanded (but the caller doesn't care)
+	end
+
+end
+//[cf]
+//[of]:merge
+//[c]Merges a signature with the current signature of the function
+//[c]
+//[c]RETURN VALUE
+//[c]	Returns true if the signature is compatible, false otherwise.
+//[c]
+function merge (arguments: *ExpressionList)
+
+	self returnCount ++
+	if self returnTypes isNil
+		self returnTypes = TypeSequence fromExpressions (self module program pool, arguments)
+		return true
+	else
+		return self returnTypes merge (arguments)
+	end
+
+end
+//[cf]
+
+//[of]:withBreakContext
+//[c]Makes the given break context the current break context. The current one
+//[c]is saved and restored after executing the block closure.
+//[c]
+function withBreakContext (bc: *BreakContext)
+
+	var old = self breakContext
+	self breakContext = bc
+	defer self breakContext = old
+
+	yield
+
+end
+//[cf]
+//[of]:withContext
+function withContext (	initialScope	: *Scope )
+
+	var cx	: BuilderContext
+	cx initialize (self, self builder, initialScope, self builder getLocalPool, nil)
+	yield cx
+	self builder releaseLocalPool
+
+end
+//[cf]
+//[of]:withScope
+function withScope
+
+	// Add a new scope to the chain
+	var scope	: Scope
+	scope initialize (self scope, self scope module, self pool, 64)
+	self scope = scope
+
+	// Restore the previous scope
+	defer self scope = scope parent
+
+	yield
+
+end
+//[cf]
+//[of]:withBlock
+//[c]Makes the given block the current block; all instructions and local variables
+//[c]will be added to this block.
+//[c]
+function withBlock (block: *Block)
+
+	// The block has its own scope
+	self withScope do
+		// Save the current block info
+		var saveBlock = self block
+		
+		// Change the current block
+		self block = block
+
+		// Restore the previous block
+		defer self block = saveBlock
+
+		yield
+	end
+
+end
+//[cf]
+//[of]:terminated
+function terminated
+	return self block terminated
+end
+//[cf]
+//[of]:terminate
+function terminate
+	self block terminated = true
+end
+//[cf]
+//[of]:program
+function program
+	return self module program
+end
+//[cf]
+//[of]:module
+function module
+	return self base module
+end
+//[cf]
+//[of]:hasMacro
+//[c]Returns true if the macro is being expanded in the current function
+//[c]
+function hasMacro (f: *Function)
+
+	var p = self
+	// Stop as soon as the context is not a macro: if there is a recursion, 
+	// the definition in this context will detect it.
+	while p notNil and p macroContext notNil
+		if p macroContext macro == f
+			return true
+		end
+		p = p parent
+	end
+	return false
+
+end
+//[cf]
+
+//[of]:addLocalDefinition
+//[c]Add a definition to the current scope
+//[c]
+function addLocalDefinition (definition: *Definition)
+
+	var conflictingDefinition = self scope addDefinition (definition)
+	if conflictingDefinition isNil
+		return true
+	end
+	
+	self reportDefinitionError (definition, 'conflictingDefinition1, definition name)
+	if conflictingDefinition hasLocation
+		self reportDefinitionError (conflictingDefinition, 'conflictingDefinition2)
+	end
+	return false
+
+end
+//[cf]
+//[of]:addGlobalDefinition
+//[c]Adds a global definition to a module with given visibility
+//[c]
+function addGlobalDefinition (scope: *Scope, definition: *Definition, visibility: Visibility)
+
+	var conflictingDefinition = scope addDefinitionWithVisibility (definition, visibility)
+	if conflictingDefinition isNil
+		return true
+	end
+	
+	self reportDefinitionError (definition, 'conflictingDefinition1, definition name)
+	if conflictingDefinition hasLocation
+		self reportDefinitionError (conflictingDefinition, 'conflictingDefinition2)
+	end
+	return false
+
+end
+//[cf]
+//[of]:addContextualDefinition
+//[c]Adds a contextual definition.
+//[c]
+function addContextualDefinition (type: *Type, definition: *Definition, visibility: Visibility)
+
+	var conflictingDefinition = type addDefinition (definition, visibility)
+	if conflictingDefinition notNil
+		self reportConflict (definition, conflictingDefinition)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[of]:addContextualSymbol
+//[c]Adds a symbol to the type.
+//[c]
+function addContextualSymbol (type: *Type, symbol: *Symbol)
+
+	var conflictingSymbol = type addSymbol (symbol)
+	if conflictingSymbol notNil
+		self reportSourceError (symbol source, 'symbolAlreadyDefined, symbol name)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[cf]
+//[of]:	checks
+//[of]:checkCompatible
+//[c]Checks that an expression is compatible with the expected type
+//[c]
+//[c]PARAMETERS
+//[c]	location	--	Location to report an error.
+//[c]	position	--	The expression corresponds to the i-th argument, starting to zero.
+//[c]	expression	--	The expression to check.
+//[c]	expected	--	The expected type: the type of the expression must be this type or a sub-type.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the expression has a compatible type.
+//[c]
+function checkCompatible (	location	: *Location, 
+	position	: Integer, 
+	expression	: *Expression,
+	expected	: *Type )
+
+	var type = expression type
+
+	// Nothing to do if the expression is already of the expected type
+	if type == expected
+		return true
+	end
+
+	// The type must be defined before performing a match as we must know the parents
+	var ok = self defineType (type)
+	if not ok
+		return false
+	end
+	
+	if type match (expected)
+		return true
+	end
+	
+	self reportSourceError (location, 'mismatchArgument, position + 1, type, expected)
+	return false
+
+end
+//[cf]
+//[of]:checkLvalue
+function checkLvalue (location: *Location, expression: *Expression)
+
+	if not expression isLvalue
+		self reportSourceError (location, 'assignNotLvalue)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkNoType
+function checkNoType (location: *Location, expression: *Expression)
+
+	if expression isType
+		self reportSourceError (location, 'expressionsContainType)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkMustCheck
+function checkMustCheck (location: *Location, list: *ExpressionList)
+
+	list each do v
+		if v type mustCheck
+			self reportSourceError (location, 'mustCheck, v type)
+			return false
+		end
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkVargs
+//[c]Checks if ... , vargsEach and vargsSize are valid in the current context
+//[c]
+function checkVargs (location: *Location)
+
+	if self extra isNil
+		self reportSourceError (location, 'invalidExtra)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkConstant
+function checkConstant (location: *Location, expression: *Expression)
+
+	if not expression isConstant
+		self reportSourceError (location, 'notAConstant)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[of]:checkInteger
+function checkInteger (location: *Location, type: *Type)
+
+	if not type isInteger
+		self reportSourceError (location, 'notAnInteger)
+		return false
+	end
+	return true
+
+end
+//[cf]
+//[cf]
+//[of]:	errors
+//[of]:reportConflict
+function reportConflict (definition: *Definition, conflictingDefinition: *Definition)
+
+	self reportDefinitionError (definition, 'conflictingDefinition1, definition name)
+	if conflictingDefinition hasLocation
+		self reportDefinitionError (conflictingDefinition, 'conflictingDefinition2)
+	end
+
+end
+//[cf]
+//[of]:reportDefinitionError
+//[c]Reports an errors attached to a particular definition.
+//[c]
+function reportDefinitionError (definition: *Definition, fmt: ErrorMessage, ...)
+	self reportError (definition module filename, definition line, fmt, ...)
+end
+//[cf]
+//[of]:reportSourceError
+//[c]Reports an error at given location
+//[c]
+//[c]REMARKS
+//[c]	This function is valid only within a given context (withContext) as the 
+//[c]	location is relative to the module of the current context.
+//[c]
+function reportSourceError (source: *Location, fmt: ErrorMessage, ...)
+	self reportError (self module filename, source line, fmt, ...)
+end
+//[cf]
+//[of]:reportError
+function reportError (file: String, line: LineNumber, fmt: ErrorMessage, ...)
+	self builder reportError (file, line, fmt, ...)
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+//[of]:MacroContext
+//[c]Attributes used when expanding a macro
+//[c]
+struct MacroContext
+
+	var location	: *Location	// The location of the call to the macro
+	var macro	: *Function	// The macro being expanded (to detect recursion)
+	var block	: *MacroBlock	// The block for the inline expression (returns and breaks will be attached to it)
+	var sourceBlock	: *ASTBlockClosure	// The block to evaluate for each yield
+
+end
+//[cf]
+//[of]:BreakContext
+//[c]Information for 'break' and 'continue' statements
+//[c]
+struct BreakContext
+
+	// When inside a while or repeat
+	// * not nil when inside a while
+	// * nil when inside a block closure
+	//
+	var instruction	: *WhileInstruction	// The while/repeat statement or nil
+
+	// When inside a block closure
+	// * undefined when inside a while
+	// 
+	var context	: *BuilderContext	// 'break' statements will be considered as 'return' statements in this context
+	var block	: *MacroBlock	// 'continue' statements will apply to this block
+	var types	: *TypeSequence	// The type of the yield expression; it is merge of all 'continue'
+
+	function initializeWhile (i: *WhileInstruction)
+		self instruction = i
+	end
+
+	function initializeBlock (context: *BuilderContext, block: *MacroBlock)
+		self instruction	= nil
+		self context	= context
+		self block	= block
+		self types	= nil
+	end
+	
+end
+//[cf]
+//[of]:LocalPool
+struct LocalPool : LinkCollectionElement (LocalPool)
+
+	var pool	: MemoryPool
+
+	function initialize
+		self pool initializeWithSize (16384)
+	end
+	
+	function release
+		self pool release
+	end
+	
+	function reset
+		self pool reset
+	end
+
+end
+//[cf]
+//[of]:IntegerConstantDictionary
+struct IntegerConstantDictionary : SimpleDictionary (*IntegerExpression, *IntegerExpression, nil, nil)
+
+	function add (constant: *IntegerExpression)
+		self super add (constant, constant)
+	end
+
+	function has (c: *IntegerExpression)
+		return self [c] notNil
+	end
+
+end
+//[cf]
+//[of]:ErrorMessage
+stype ErrorMessage : String
+	'import	= "cannot import '\a'"
+	'recursiveImport	= "recursive import of '\a'"
+	'conflictingDefinition1	= "conflicting definition: \a"
+	'conflictingDefinition2	= "first definition"
+	'instructionNeverExecuted	= "this instruction will never be executed"
+	'incompatibleReturnTypes	= "return \a is not compatible with \a"
+	'incompatibleCondValues	= "\a is not compatible with \a"
+	'missingReturn	= "'return \a' is missing at the end of the function"
+	'missingContinue	= "'continue \a' is missing at the end of the block"
+	'noMatchingDefinition	= "can't find a definition for \a"
+	'noMatchingContextDefinition	= "can't find a definition for \a in \a"
+	'privateContextDefinition	= "definition for \a in \a is private"
+	'notType	= "the expression is not a type"
+	'notStructure	= "\a is not a structure"
+	'unknownAttribute	= "Unknown attribute \a"
+	'undefinedAttributeSize	= "undefined size of attribute \a"
+	'parameterNotAValidConstant	= "a parameter of \a is not a valid constant"
+	'variableMismatch	= "wrong number of variables, expected \a but found \a"
+	'assignMismatch	= "wrong number of left expressions, expected \a but found \a"
+	'parameterMismatch	= "wrong number of block parameters, expected \a but found \a"
+	'argumentMismatch	= "wrong number of arguments, expected \a but found \a"
+	'argumentMismatch2	= "wrong number of arguments, expected \a or more but found \a"
+	'noArgument	= "\a takes no argument"
+	'assignNotLvalue	= "can't assign, the left expression is not a lvalue"
+	'invalidPointerComparison	= "can't compare a \a with a \a"
+	'notABooleanExpression	= "the expression is not a boolean expression"
+	'breakNoLoop	= "break must be inside a loop or a macro block"
+	'continueNoLoop	= "continue must be inside a loop or a macro block"
+	'notAnInteger	= "the expression is not an integer"
+	'notAConstant	= "the expression is not a constant"
+	'recursiveFunctionImport	= "recursive call to import"
+	'mismatchArgument	= "argument \a: \a is not a \a"
+	'integerOverflow	= "integer constant is out of range for an \a"
+	'notASimpleType	= "\a is not a simple type"
+	'invalidCast	= "can't cast \a to \a"
+	'notConstantValue	= "not a constant value"
+	'cantDefineFunction	= "--- error while defining the function '\a'"
+	'invalidArrayDiffType	= "substract to array pointer: invalid second argument: '\a': it must be an integer or a '\a'"
+	'missingBlock	= "block missing"
+	'unexpectedBlock	= "block unexpected"
+	'noParent	= "super: '\a' has no parent type"
+	'notPointerToFunction	= "call: '\a' is not a pointer to a function"
+	'notPointer	= "'\a' is not a pointer"
+	'notArray	= "'\a' is not an array"
+	'typeNotAnInteger	= "'\a' is not an integer type"
+	'notAFunction	= "'\a' is not a function"
+	'invalidStringCharSize	= "invalid char size: \a. must be 8 or 16 bits"
+	'cannotBeVoid	= "the expression does not return any value"
+	'cannotBeComposite	= "the expression can not have multiple values"
+	'cannotBeEmpty	= "the list of expressions cannot be empty"
+	'expressionsContainType	= "the list of expressions cannot contain a type"
+	'initializerType	= "initializer: '\a' is neither a structure nor an array"
+	'initializerMissingValue	= "initializer: missing value"
+	'initializerTooManyValues	= "initializer: too many values"
+	'switchDuplicate	= "switch: duplicate constant"
+	'needType	= "recursive call of '\a', the return type must be explicitely declared"
+	'circularDependency	= "recursive call of '\a'"
+	'recursiveType	= "recursive inclusion of the type '\a'"
+	'recursiveFunction	= "recursive function '\a'"
+	'recursiveSymbol	= "recursive symbol '\a'"
+	'invalidArraySize	= "the size of the array is not an integer constant"
+	'invalidSymbolValue	= "invalid symbol value"
+	'invalidExtra	= "there is no extra parameter here"
+	'notANumericalExpression	= "the expression is not a numerical expression"
+	'infiniteRecursion	= "infinite recursion with \a"
+	'iteratorReference	= "can't get a reference of \a: it is an iterator"
+	'invalidVtableDefinition	= "can't use \a in vtable: it must be a constant or a non-generic function"
+	'unexpectedBreakArguments	= "break: unexpected argument"
+	'unexpectedContinueArguments	= "continue: unexpected argument"
+	'unsupportedContinue	= "continue not supported in while yet"
+	'typeHasNoSize	= "the type '\a' has no size"
+	'cantGuessStringType	= "can't guess the string type"
+	'cantGuessIntegerType	= "can't guess the integer type"
+	'cantGuessArrayType	= "can't guess the array type"
+	'cantGuessSymbolType	= "can't guess the symbol type"
+	'invalidIntegerTypespace	= "can't convert the integer to a \a"
+	'symbolNotFound	= "symbol '\a not found in \a"
+	'symbolAlreadyDefined	= "symbol '\a already defined"
+	'missingSymbolValue	= "missing symbol value"
+	'unsupportedSubtype	= "a subtype can't inherit from \a"
+	'mustCheck	= "the return value of type '\a' must be checked"
+	'invalidYield	= "yield not allowed here"
+end
+//[cf]
+
+import "parser"
+import "data/ast"	// The input data
+import "data/program"	// The output data
+import "commons"
+import "std"

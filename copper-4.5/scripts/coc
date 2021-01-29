@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Script to compile with copper-llvm
+# It generates bitcode (.bc) and compile it to an ELF object file (.o)
+#
+# * The -o must be specified
+# * Use -cc <compiler> to use an alternate binary for copper-llvm
+#
+
+COPPERC=copper-c
+CC=gcc
+ARGS=
+
+set -e
+
+while [[ $# -gt 0 ]]
+do
+key="$1"
+shift
+case $key in
+	-o)
+		OUT="$1"
+		shift
+		;;
+	-cc)
+		COPPERC="$1"
+		shift
+		;;
+	*)
+		ARGS="${ARGS} $key"
+	;;
+esac
+done
+
+${COPPERC} -o ${OUT}.c ${ARGS}
+${CC} -c -fshort-wchar ${OUT}.c -o ${OUT}

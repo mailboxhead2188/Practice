@@ -1,0 +1,723 @@
+
+.c
+.cdecl
+
+const LLVMBool	= Int32
+
+// Opaque types.
+struct LLVMContext
+end
+struct LLVMModule
+end
+struct LLVMType
+end
+struct LLVMValue
+end
+struct LLVMBasicBlock
+end
+struct LLVMModuleProvider
+end
+struct LLVMMemoryBuffer
+end
+struct LLVMPassManager
+end
+struct LLVMPassRegistry
+end
+struct LLVMUse
+end
+
+const LLVMContextRef	= *LLVMContext
+const LLVMModuleRef	= *LLVMModule
+const LLVMTypeRef	= *LLVMType
+const LLVMValueRef	= *LLVMValue
+const LLVMBasicBlockRef	= *LLVMBasicBlock
+const LLVMBuilderRef	= *LLVMBuilder
+const LLVMModuleProviderRef	= *LLVMModuleProvider
+const LLVMMemoryBufferRef	= *LLVMMemoryBuffer
+const LLVMPassManagerRef	= *LLVMPassManager
+const LLVMPassRegistryRef	= *LLVMPassRegistry
+const LLVMUseRef	= *LLVMUse
+
+stype	LLVMAttribute
+	'ZExtAttribute	= 1<<0
+	'SExtAttribute	= 1<<1
+	'NoReturnAttribute	= 1<<2
+	'InRegAttribute	= 1<<3
+	'StructRetAttribute	= 1<<4
+	'NoUnwindAttribute	= 1<<5
+	'NoAliasAttribute	= 1<<6
+	'ByValAttribute	= 1<<7
+	'NestAttribute	= 1<<8
+	'ReadNoneAttribute	= 1<<9
+	'ReadOnlyAttribute	= 1<<10
+	'NoInlineAttribute	= 1<<11
+	'AlwaysInlineAttribute	= 1<<12
+	'OptimizeForSizeAttribute	= 1<<13
+	'StackProtectAttribute	= 1<<14
+	'StackProtectReqAttribute	= 1<<15
+	'Alignment	= 31<<16
+	'NoCaptureAttribute	= 1<<21
+	'NoRedZoneAttribute	= 1<<22
+	'NoImplicitFloatAttribute	= 1<<23
+	'NakedAttribute	= 1<<24
+	'InlineHintAttribute	= 1<<25
+	'StackAlignment	= 7<<26
+end
+
+stype LLVMOpcode
+	// Terminator Instructions
+	'Ret	= 1
+	'Br	= 2
+	'Switch	= 3
+	'IndirectBr	= 4
+	'Invoke	= 5
+	//'Unwind	= 6 // removed 6 due to API changes
+	'Unreachable	= 7
+	
+	// Standard Binary Operators
+	'Add	= 8
+	'FAdd	= 9
+	'Sub	= 10
+	'FSub	= 11
+	'Mul	= 12
+	'FMul	= 13
+	'UDiv	= 14
+	'SDiv	= 15
+	'FDiv	= 16
+	'URem	= 17
+	'SRem	= 18
+	'FRem	= 19
+	
+	// Logical Operators
+	'Shl	= 20
+	'LShr	= 21
+	'AShr	= 22
+	'And	= 23
+	'Or	= 24
+	'Xor	= 25
+	
+	// Memory Operators
+	'Alloca	= 26
+	'Load	= 27
+	'Store	= 28
+	'GetElementPtr	= 29
+	
+	// Cast Operators
+	'Trunc	= 30
+	'ZExt	= 31
+	'SExt	= 32
+	'FPToUI	= 33
+	'FPToSI	= 34
+	'UIToFP	= 35
+	'SIToFP	= 36
+	'FPTrunc	= 37
+	'FPExt	= 38
+	'PtrToInt	= 39
+	'IntToPtr	= 40
+	'BitCast	= 41
+	
+	// Other Operators
+	'ICmp	= 42
+	'FCmp	= 43
+	'PHI	= 44
+	'Call	= 45
+	'Select	= 46
+	// UserOp1
+	// UserOp2
+	'VAArg	= 49
+	'ExtractElement	= 50
+	'InsertElement	= 51
+	'ShuffleVector	= 52
+	'ExtractValue	= 53
+	'InsertValue	= 54
+end
+
+stype LLVMTypeKind
+	'VoidTypeKind	// type with no size
+	'HalfTypeKind	// 16 bit floating point type
+	'FloatTypeKind	// 32 bit floating point type
+	'DoubleTypeKind	// 64 bit floating point type
+	'X86_FP80TypeKind	// 80 bit floating point type (X87)
+	'FP128TypeKind	// 128 bit floating point type (112-bit mantissa)
+	'PPC_FP128TypeKind	// 128 bit floating point type (two 64-bits)
+	'LabelTypeKind	// Labels
+	'IntegerTypeKind	// Arbitrary bit width integers
+	'FunctionTypeKind	// Functions
+	'StructTypeKind	// Structures
+	'ArrayTypeKind	// Arrays
+	'PointerTypeKind	// Pointers
+	'VectorTypeKind	// SIMD 'packed' format or other vector type
+	'MetadataTypeKind	// Metadata
+	'X86_MMXTypeKind	// X86 MMX
+end
+
+stype LLVMLinkage
+	'ExternalLinkage	// Externally visible function
+	'AvailableExternallyLinkage	
+	'LinkOnceAnyLinkage	// Keep one copy of function when linking (inline)
+	'LinkOnceODRLinkage	// Same but only replaced by something equivalent.
+	'LinkOnceODRAutoHideLinkage	// Like LinkOnceODR, but possibly hidden.
+	'WeakAnyLinkage	// Keep one copy of function when linking (weak)
+	'WeakODRLinkage	// Same but only replaced by something equivalent.
+	'AppendingLinkage	// Special purpose only applies to global arrays
+	'InternalLinkage	// Rename collisions when linking (static functions)
+	'PrivateLinkage	// Like Internal but omit from symbol tabl
+	'DLLImportLinkage	// Function to be imported from DLL
+	'DLLExportLinkage	// Function to be accessible from DLL
+	'ExternalWeakLinkage	// ExternalWeak linkage description
+	'GhostLinkage	// Obsolete
+	'CommonLinkage	// Tentative definitions
+	'LinkerPrivateLinkage	// Like Private but linker removes.
+	'LinkerPrivateWeakLinkage	// Like LinkerPrivate but is weak.
+end
+
+stype LLVMVisibility
+	'DefaultVisibility	// The GV is visible
+	'HiddenVisibility	// The GV is hidden
+	'ProtectedVisibility	// The GV is protected
+end
+
+stype LLVMCallConv
+	'CCallConv	= 0
+	'FastCallConv	= 8
+	'ColdCallConv	= 9
+	'X86StdcallCallConv	= 64
+	'X86FastcallCallConv	= 65
+end
+
+stype LLVMIntPredicate
+	'IntEQ = 32	// equal
+	'IntNE	// not equal
+	'IntUGT	// unsigned greater than
+	'IntUGE	// unsigned greater or equal
+	'IntULT	// unsigned less than
+	'IntULE	// unsigned less or equal
+	'IntSGT	// signed greater than
+	'IntSGE	// signed greater or equal
+	'IntSLT	// signed less than
+	'IntSLE	// signed less or equal
+end
+
+stype LLVMRealPredicate
+	'RealPredicateFalse	// Always false (always folded)
+	'RealOEQ	// True if ordered and equal
+	'RealOGT	// True if ordered and greater than
+	'RealOGE	// True if ordered and greater than or equal
+	'RealOLT	// True if ordered and less than
+	'RealOLE	// True if ordered and less than or equal
+	'RealONE	// True if ordered and operands are unequal
+	'RealORD	// True if ordered (no nans)
+	'RealUNO	// True if unordered: isnan(X) | isnan(Y)
+	'RealUEQ	// True if unordered or equal
+	'RealUGT	// True if unordered or greater than
+	'RealUGE	// True if unordered greater than or equal
+	'RealULT	// True if unordered or less than
+	'RealULE	// True if unordered less than or equal
+	'RealUNE	// True if unordered or not equal
+	'RealPredicateTrue	// Always true (always folded)
+end
+
+import function LLVMDisposeMessage (string)
+
+//===-- Contexts ----------------------------------------------------------===
+
+import function LLVMContextCreate	: LLVMContextRef
+import function LLVMGetGlobalContext	: LLVMContextRef
+import function LLVMContextDispose (LLVMContextRef)	
+
+import function LLVMGetMDKindIDInContext	(LLVMContextRef, string, unsigned)	: unsigned
+import function LLVMGetMDKindID	(string, unsigned)	: unsigned
+
+
+//===-- Modules -----------------------------------------------------------===
+
+import function  LLVMModuleCreateWithName (string)	: LLVMModuleRef
+import function LLVMModuleCreateWithNameInContext (string, LLVMContextRef)	: LLVMModuleRef
+import function LLVMDisposeModule (LLVMModuleRef)
+
+import function LLVMGetDataLayout	(LLVMModuleRef)	: string
+import function LLVMSetDataLayout	(LLVMModuleRef, string)	
+import function LLVMGetTarget	(LLVMModuleRef)	: string
+import function LLVMSetTarget	(LLVMModuleRef, string)	
+import function LLVMAddTypeName	(LLVMModuleRef, string, LLVMTypeRef)	: LLVMBool
+import function LLVMDeleteTypeName	(LLVMModuleRef, string)	
+import function LLVMGetTypeByName	(LLVMModuleRef, string)	: LLVMTypeRef
+import function LLVMGetTypeName	(LLVMModuleRef, LLVMTypeRef)	: string
+import function LLVMDumpModule	(LLVMModuleRef)	
+import function LLVMSetModuleInlineAsm	(LLVMModuleRef, string)	
+import function LLVMGetModuleContext	(LLVMModuleRef)	: LLVMContextRef
+
+//===-- Types -------------------------------------------------------------===
+
+// LLVM types conform to the following hierarchy:
+//
+//   types:
+//     integer type
+//     real type
+//     function type
+//     sequence types:
+//       array type
+//       pointer type
+//       vector type
+//     void type
+//     label type
+//     opaque type
+
+import function LLVMGetTypeKind	(LLVMTypeRef)	: LLVMTypeKind
+import function LLVMGetTypeContext	(LLVMTypeRef)	: LLVMContextRef
+
+// Operations on integer types
+import function LLVMInt1TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMInt8TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMInt16TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMInt32TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMInt64TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMIntTypeInContext	(LLVMContextRef, unsigned)	: LLVMTypeRef
+
+import function LLVMInt1Type		: LLVMTypeRef
+import function LLVMInt8Type		: LLVMTypeRef
+import function LLVMInt16Type		: LLVMTypeRef
+import function LLVMInt32Type		: LLVMTypeRef
+import function LLVMInt64Type		: LLVMTypeRef
+import function LLVMIntType	(unsigned)	: LLVMTypeRef
+import function LLVMGetIntTypeWidth	(LLVMTypeRef)	: unsigned
+
+// Operations on real types
+import function LLVMFloatTypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMDoubleTypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMX86FP80TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMFP128TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMPPCFP128TypeInContext	(LLVMContextRef)	: LLVMTypeRef
+
+import function LLVMFloatType	: LLVMTypeRef
+import function LLVMDoubleType	: LLVMTypeRef
+import function LLVMX86FP80Type	: LLVMTypeRef
+import function LLVMFP128Type	: LLVMTypeRef
+import function LLVMPPCFP128Type	: LLVMTypeRef
+
+// Operations on function types
+import function LLVMFunctionType	(LLVMTypeRef, *[] LLVMTypeRef , unsigned, LLVMBool)	: LLVMTypeRef
+import function LLVMIsFunctionVarArg	(LLVMTypeRef)	: LLVMBool
+import function LLVMGetReturnType	(LLVMTypeRef)	: LLVMTypeRef
+import function LLVMCountParamTypes	(LLVMTypeRef)	: unsigned
+import function LLVMGetParamTypes	(LLVMTypeRef, *[] LLVMTypeRef)
+
+// Operations on struct types
+import function LLVMStructTypeInContext	(LLVMContextRef, *[] LLVMTypeRef, unsigned, LLVMBool)	: LLVMTypeRef
+import function LLVMStructType	(*[] LLVMTypeRef, unsigned, LLVMBool)	: LLVMTypeRef
+import function LLVMStructCreateNamed	(LLVMContextRef, string)	: LLVMTypeRef
+import function LLVMGetStructName	(LLVMTypeRef)	: string
+import function LLVMStructSetBody	(LLVMTypeRef, *[] LLVMTypeRef, unsigned, LLVMBool)
+import function LLVMCountStructElementTypes	(LLVMTypeRef)	: unsigned
+import function LLVMGetStructElementTypes	(LLVMTypeRef, *[] LLVMTypeRef)	
+import function LLVMIsPackedStruct	(LLVMTypeRef)	: LLVMBool
+
+// Operations on array, pointer, and vector types (sequence types)
+import function LLVMArrayType	(LLVMTypeRef, unsigned)	: LLVMTypeRef
+import function LLVMPointerType	(LLVMTypeRef, unsigned)	: LLVMTypeRef
+import function LLVMVectorType	(LLVMTypeRef, unsigned)	: LLVMTypeRef
+
+import function LLVMGetElementType	(LLVMTypeRef)	: LLVMTypeRef
+import function LLVMGetArrayLength	(LLVMTypeRef)	: unsigned
+import function LLVMGetPointerAddressSpace	(LLVMTypeRef)	: unsigned
+import function LLVMGetVectorSize	(LLVMTypeRef)	: unsigned
+
+// Operations on other types
+import function LLVMVoidTypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMLabelTypeInContext	(LLVMContextRef)	: LLVMTypeRef
+import function LLVMX86MMXTypeInContext	(LLVMContextRef)	: LLVMTypeRef
+
+import function LLVMVoidType	: LLVMTypeRef
+import function LLVMLabelType	: LLVMTypeRef
+import function LLVMOpaqueType	: LLVMTypeRef
+import function LLVMX86MMXType	: LLVMTypeRef
+
+//===-- Values ------------------------------------------------------------===
+
+// Operations on all values
+import function LLVMTypeOf	(LLVMValueRef)	: LLVMTypeRef
+import function LLVMGetValueName	(LLVMValueRef)	: string
+import function LLVMSetValueName	(LLVMValueRef, string)	
+import function LLVMDumpValue	(LLVMValueRef)	
+import function LLVMReplaceAllUsesWith	(LLVMValueRef, LLVMValueRef)	
+import function LLVMHasMetadata	(LLVMValueRef)	: LLVMBool
+import function LLVMGetMetadata	(LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMSetMetadata	(LLVMValueRef, unsigned, LLVMValueRef)	
+
+// Operations on Uses
+import function LLVMGetFirstUse	(LLVMValueRef)	: LLVMUseRef
+import function LLVMGetNextUse	(LLVMUseRef)	: LLVMUseRef
+import function LLVMGetUser	(LLVMUseRef)	: LLVMValueRef
+import function LLVMGetUsedValue	(LLVMUseRef)	: LLVMValueRef
+
+// Operations on Users
+import function LLVMGetOperand	(LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMSetOperand	(LLVMValueRef, unsigned, LLVMValueRef)	
+import function LLVMGetNumOperands	(LLVMValueRef)	: int
+
+// Operations on constants of any type
+import function LLVMConstNull	(LLVMTypeRef)	: LLVMValueRef
+import function LLVMConstAllOnes	(LLVMTypeRef)	: LLVMValueRef
+import function LLVMGetUndef	(LLVMTypeRef)	: LLVMValueRef
+import function LLVMIsConstant	(LLVMValueRef)	: LLVMBool
+import function LLVMIsNull	(LLVMValueRef)	: LLVMBool
+import function LLVMIsUndef	(LLVMValueRef)	: LLVMBool
+import function LLVMConstPointerNull	(LLVMTypeRef)	: LLVMValueRef
+
+// Operations on metadata
+import function LLVMMDStringInContext	(LLVMContextRef, string, unsigned)	: LLVMValueRef
+import function LLVMMDString	(string, unsigned)	: LLVMValueRef
+import function LLVMMDNodeInContext	(LLVMContextRef, *[] LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMMDNode	(*[] LLVMValueRef, unsigned)	: LLVMValueRef
+
+// Operations on scalar constants
+import function LLVMConstInt	(LLVMTypeRef, Uint64, LLVMBool)	: LLVMValueRef
+//[c]LLVMValueRef LLVMConstIntOfArbitraryPrecision(LLVMTypeRef IntTy, unsigned NumWords, const uint64_t Words[]);
+//[c]LLVMValueRef LLVMConstIntOfString(LLVMTypeRef IntTy, const char *Text, uint8_t Radix);
+//[c]LLVMValueRef LLVMConstIntOfStringAndSize(LLVMTypeRef IntTy, const char *Text, unsigned SLen, uint8_t Radix);
+//[c]LLVMValueRef LLVMConstReal(LLVMTypeRef RealTy, double N);
+//[c]LLVMValueRef LLVMConstRealOfString(LLVMTypeRef RealTy, const char *Text);
+//[c]LLVMValueRef LLVMConstRealOfStringAndSize(LLVMTypeRef RealTy, const char *Text, unsigned SLen);
+//[c]unsigned long long LLVMConstIntGetZExtValue(LLVMValueRef ConstantVal);
+//[c]long long LLVMConstIntGetSExtValue(LLVMValueRef ConstantVal);
+
+// Operations on composite constants
+import function LLVMConstStringInContext	(LLVMContextRef, string, unsigned, LLVMBool)	: LLVMValueRef
+import function LLVMConstStructInContext	(LLVMContextRef, *[] LLVMValueRef, unsigned, LLVMBool)	: LLVMValueRef
+import function LLVMConstString	(string, unsigned, LLVMBool)	: LLVMValueRef
+import function LLVMConstArray	(LLVMTypeRef, *[] LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMConstStruct	(*[] LLVMValueRef, unsigned, LLVMBool)	: LLVMValueRef
+import function LLVMConstVector	(*[] LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMConstNamedStruct	(LLVMTypeRef, *[] LLVMValueRef, unsigned)	: LLVMValueRef
+
+// Constant expressions
+//[c]LLVMOpcode LLVMGetConstOpcode(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMAlignOf(LLVMTypeRef Ty);
+//[c]LLVMValueRef LLVMSizeOf(LLVMTypeRef Ty);
+//[c]LLVMValueRef LLVMConstNeg(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMConstNSWNeg(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMConstNUWNeg(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMConstFNeg(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMConstNot(LLVMValueRef ConstantVal);
+//[c]LLVMValueRef LLVMConstAdd(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNSWAdd(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNUWAdd(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFAdd(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstSub(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNSWSub(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNUWSub(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFSub(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstMul(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNSWMul(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstNUWMul(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFMul(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstUDiv(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstSDiv(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstExactSDiv(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFDiv(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstURem(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstSRem(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFRem(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstAnd(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstOr(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstXor(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstICmp(LLVMIntPredicate Predicate, LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstFCmp(LLVMRealPredicate Predicate, LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstShl(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstLShr(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstAShr(LLVMValueRef LHSConstant, LLVMValueRef RHSConstant);
+//[c]LLVMValueRef LLVMConstGEP(LLVMValueRef ConstantVal, LLVMValueRef *ConstantIndices, unsigned NumIndices);
+//[c]LLVMValueRef LLVMConstInBoundsGEP(LLVMValueRef ConstantVal, LLVMValueRef *ConstantIndices, unsigned NumIndices);
+//[c]LLVMValueRef LLVMConstTrunc(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstSExt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstZExt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstFPTrunc(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstFPExt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstUIToFP(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstSIToFP(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstFPToUI(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstFPToSI(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstPtrToInt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+import function LLVMConstIntToPtr	(LLVMValueRef, LLVMTypeRef)	: LLVMValueRef
+import function LLVMConstBitCast	(LLVMValueRef, LLVMTypeRef)	: LLVMValueRef
+//[c]LLVMValueRef LLVMConstZExtOrBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstSExtOrBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstTruncOrBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstPointerCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstIntCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType, LLVMBool isSigned);
+//[c]LLVMValueRef LLVMConstFPCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+//[c]LLVMValueRef LLVMConstSelect(LLVMValueRef ConstantCondition, LLVMValueRef ConstantIfTrue, LLVMValueRef ConstantIfFalse);
+//[c]LLVMValueRef LLVMConstExtractElement(LLVMValueRef VectorConstant, LLVMValueRef IndexConstant);
+//[c]LLVMValueRef LLVMConstInsertElement(LLVMValueRef VectorConstant, LLVMValueRef ElementValueConstant, LLVMValueRef IndexConstant);
+//[c]LLVMValueRef LLVMConstShuffleVector(LLVMValueRef VectorAConstant, LLVMValueRef VectorBConstant, LLVMValueRef MaskConstant);
+//[c]LLVMValueRef LLVMConstExtractValue(LLVMValueRef AggConstant, unsigned *IdxList, unsigned NumIdx);
+//[c]LLVMValueRef LLVMConstInsertValue(LLVMValueRef AggConstant, LLVMValueRef ElementValueConstant, unsigned *IdxList, unsigned NumIdx);
+//[c]LLVMValueRef LLVMConstInlineAsm(LLVMTypeRef Ty, const char *AsmString, const char *Constraints, LLVMBool HasSideEffects, LLVMBool IsAlignStack);
+//[c]LLVMValueRef LLVMBlockAddress(LLVMValueRef F, LLVMBasicBlockRef BB);
+
+// Operations on global variables, functions, and aliases (globals)
+import function LLVMGetGlobalParent	(LLVMValueRef)	: LLVMModuleRef
+import function LLVMIsDeclaration	(LLVMValueRef)	: LLVMBool
+import function LLVMGetLinkage	(LLVMValueRef)	: LLVMLinkage
+import function LLVMSetLinkage	(LLVMValueRef, LLVMLinkage)	
+import function LLVMGetSection	(LLVMValueRef)	: string
+import function LLVMSetSection	(LLVMValueRef, string)	
+import function LLVMGetVisibility	(LLVMValueRef)	: LLVMVisibility
+import function LLVMSetVisibility	(LLVMValueRef, LLVMVisibility)	
+import function LLVMGetAlignment	(LLVMValueRef)	: unsigned
+import function LLVMSetAlignment	(LLVMValueRef, unsigned)	
+
+// Operations on global variables
+import function LLVMAddGlobal	(LLVMModuleRef, LLVMTypeRef, string)	: LLVMValueRef
+import function LLVMAddGlobalInAddressSpace	(LLVMModuleRef, LLVMTypeRef, string, unsigned)	: LLVMValueRef
+import function LLVMGetNamedGlobal	(LLVMModuleRef, string)	: LLVMValueRef
+import function LLVMGetFirstGlobal	(LLVMModuleRef)	: LLVMValueRef
+import function LLVMGetLastGlobal	(LLVMModuleRef)	: LLVMValueRef
+import function LLVMGetNextGlobal	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetPreviousGlobal	(LLVMValueRef)	: LLVMValueRef
+import function LLVMDeleteGlobal	(LLVMValueRef)	
+import function LLVMGetInitializer	(LLVMValueRef)	: LLVMValueRef
+import function LLVMSetInitializer	(LLVMValueRef, LLVMValueRef)	
+import function LLVMIsThreadLocal	(LLVMValueRef)	: LLVMBool
+import function LLVMSetThreadLocal	(LLVMValueRef, LLVMBool)	
+import function LLVMIsGlobalConstant	(LLVMValueRef)	: LLVMBool
+import function LLVMSetGlobalConstant	(LLVMValueRef, LLVMBool)
+
+// Operations on aliases
+import function LLVMAddAlias	(LLVMModuleRef, LLVMTypeRef, LLVMValueRef, string)	: LLVMValueRef
+
+// Operations on functions
+import function LLVMAddFunction	(LLVMModuleRef, string, LLVMTypeRef)	: LLVMValueRef
+import function LLVMGetNamedFunction	(LLVMModuleRef, string)	: LLVMValueRef
+import function LLVMGetFirstFunction	(LLVMModuleRef)	: LLVMValueRef
+import function LLVMGetLastFunction	(LLVMModuleRef)	: LLVMValueRef
+import function LLVMGetNextFunction	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetPreviousFunction	(LLVMValueRef)	: LLVMValueRef
+import function LLVMDeleteFunction	(LLVMValueRef)	
+import function LLVMGetIntrinsicID	(LLVMValueRef)	: unsigned
+import function LLVMGetFunctionCallConv	(LLVMValueRef)	: unsigned
+import function LLVMSetFunctionCallConv	(LLVMValueRef, LLVMCallConv)	
+import function LLVMGetGC	(LLVMValueRef)	: string
+import function LLVMSetGC	(LLVMValueRef, string)	
+import function LLVMAddFunctionAttr	(LLVMValueRef, LLVMAttribute)	
+import function LLVMGetFunctionAttr	(LLVMValueRef)	: LLVMAttribute
+import function LLVMRemoveFunctionAttr	(LLVMValueRef, LLVMAttribute)	
+
+// Operations on parameters
+import function LLVMCountParams	(LLVMValueRef)	: unsigned
+import function LLVMGetParams	(LLVMValueRef, *[] LLVMValueRef)	
+import function LLVMGetParam	(LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMGetParamParent	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetFirstParam	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetLastParam	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetNextParam	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetPreviousParam	(LLVMValueRef)	: LLVMValueRef
+import function LLVMAddAttribute	(LLVMValueRef, LLVMAttribute)	
+import function LLVMRemoveAttribute	(LLVMValueRef, LLVMAttribute)	
+import function LLVMGetAttribute	(LLVMValueRef)	: LLVMAttribute
+import function LLVMSetParamAlignment	(LLVMValueRef, unsigned)	
+
+// Operations on basic blocks
+import function LLVMBasicBlockAsValue	(LLVMBasicBlockRef)	: LLVMValueRef
+import function LLVMValueIsBasicBlock	(LLVMValueRef)	: LLVMBool
+import function LLVMValueAsBasicBlock	(LLVMValueRef)	: LLVMBasicBlockRef
+import function LLVMGetBasicBlockParent	(LLVMBasicBlockRef)	: LLVMValueRef
+import function LLVMCountBasicBlocks	(LLVMValueRef)	: unsigned
+import function LLVMGetBasicBlocks	(LLVMValueRef, *[] LLVMBasicBlockRef)	
+import function LLVMGetFirstBasicBlock	(LLVMValueRef)	: LLVMBasicBlockRef
+import function LLVMGetLastBasicBlock	(LLVMValueRef)	: LLVMBasicBlockRef
+import function LLVMGetNextBasicBlock	(LLVMBasicBlockRef)	: LLVMBasicBlockRef
+import function LLVMGetPreviousBasicBlock	(LLVMBasicBlockRef)	: LLVMBasicBlockRef
+import function LLVMGetEntryBasicBlock	(LLVMValueRef)	: LLVMBasicBlockRef
+
+import function LLVMAppendBasicBlockInContext	(LLVMContextRef, LLVMValueRef, string )	: LLVMBasicBlockRef
+import function LLVMInsertBasicBlockInContext	(LLVMContextRef, LLVMBasicBlockRef, string)	: LLVMBasicBlockRef
+
+import function LLVMAppendBasicBlock	(LLVMValueRef, string)	: LLVMBasicBlockRef
+import function LLVMInsertBasicBlock	(LLVMBasicBlockRef, string)	: LLVMBasicBlockRef
+import function LLVMDeleteBasicBlock	(LLVMBasicBlockRef)
+
+import function LLVMMoveBasicBlockBefore	(LLVMBasicBlockRef, LLVMBasicBlockRef)
+import function LLVMMoveBasicBlockAfter	(LLVMBasicBlockRef, LLVMBasicBlockRef)
+
+// Operations on instructions
+import function LLVMGetInstructionParent	(LLVMValueRef)	: LLVMBasicBlockRef
+import function LLVMGetFirstInstruction	(LLVMBasicBlockRef)	: LLVMValueRef
+import function LLVMGetLastInstruction	(LLVMBasicBlockRef)	: LLVMValueRef
+import function LLVMGetNextInstruction	(LLVMValueRef)	: LLVMValueRef
+import function LLVMGetPreviousInstruction	(LLVMValueRef)	: LLVMValueRef
+
+// Operations on call sites
+import function LLVMSetInstructionCallConv	(LLVMValueRef, LLVMCallConv)
+import function LLVMGetInstructionCallConv	(LLVMValueRef)	: unsigned
+import function LLVMAddInstrAttribute	(LLVMValueRef, unsigned, LLVMAttribute)
+import function LLVMRemoveInstrAttribute	(LLVMValueRef, unsigned, LLVMAttribute)
+import function LLVMSetInstrParamAlignment	(LLVMValueRef, unsigned,  unsigned)
+
+// Operations on call instructions (only)
+import function LLVMIsTailCall	(LLVMValueRef)	: LLVMBool
+import function LLVMSetTailCall	(LLVMValueRef, LLVMBool)
+
+// Operations on phi nodes
+import function LLVMAddIncoming	(LLVMValueRef, *[] LLVMValueRef, *[] LLVMBasicBlockRef, unsigned)
+import function LLVMCountIncoming	(LLVMValueRef)	: unsigned
+import function LLVMGetIncomingValue	(LLVMValueRef, unsigned)	: LLVMValueRef
+import function LLVMGetIncomingBlock	(LLVMValueRef, unsigned)	: LLVMBasicBlockRef
+
+//===-- Instruction builders ----------------------------------------------===
+
+struct LLVMBuilder
+	import function "LLVMPositionBuilder"	Position	(LLVMBasicBlockRef, LLVMValueRef)
+	import function "LLVMPositionBuilderBefore"	PositionBefore	(LLVMValueRef)
+	import function "LLVMPositionBuilderAtEnd"	PositionAtEnd	(LLVMBasicBlockRef)
+	import function "LLVMGetInsertBlock"	GetInsertBlock	: LLVMBasicBlockRef
+	import function "LLVMClearInsertionPosition"	ClearInsertionPosition	
+	import function "LLVMInsertIntoBuilder"	Insert	(LLVMValueRef)
+	import function "LLVMInsertIntoBuilderWithName"	InsertWithName	(LLVMValueRef, string)
+	import function "LLVMDisposeBuilder"	Dispose
+	
+	// Metadata
+	import function "LLVMSetCurrentDebugLocation"	SetCurrentDebugLocation
+	import function "LLVMGetCurrentDebugLocation"	GetCurrentDebugLocation	: LLVMValueRef
+	import function "LLVMSetInstDebugLocation"	SetInstDebugLocation	(LLVMValueRef)
+	
+	// Terminators
+	import function "LLVMBuildRetVoid"	RetVoid		: LLVMValueRef
+	import function "LLVMBuildRet"	Ret	(LLVMValueRef)	: LLVMValueRef
+	import function "LLVMBuildAggregateRet"	AggregateRet	(*[] LLVMValueRef, unsigned)	: LLVMValueRef
+	import function "LLVMBuildBr"	Br	(LLVMBasicBlockRef)	: LLVMValueRef
+	import function "LLVMBuildCondBr"	CondBr	(LLVMValueRef, LLVMBasicBlockRef, LLVMBasicBlockRef)	: LLVMValueRef
+	import function "LLVMBuildSwitch"	Switch	(LLVMValueRef, LLVMBasicBlockRef, unsigned)	: LLVMValueRef
+	import function "LLVMBuildIndirectBr"	IndirectBr	(LLVMValueRef, unsigned)	: LLVMValueRef
+	import function "LLVMBuildInvoke"	Invoke	(LLVMValueRef, *[] LLVMValueRef, unsigned, LLVMBasicBlockRef, LLVMBasicBlockRef, string)	: LLVMValueRef
+	import function "LLVMBuildUnwind"	Unwind		: LLVMValueRef
+	import function "LLVMBuildUnreachable"	Unreachable		: LLVMValueRef
+
+	// Arithmetic
+	import function "LLVMBuildAdd"	Add	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNSWAdd"	NSWAdd	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNUWAdd"	NUWAdd	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildFAdd"	FAdd	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildSub"	Sub	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNSWSub"	NSWSub	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNUWSub"	NUWSub	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildFSub"	FSub	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildMul"	Mul	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNSWMul"	NSWMul	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildNUWMul"	NUWMul	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildFMul"	FMul	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildUDiv"	UDiv	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildSDiv"	SDiv	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildExactSDiv"	ExactSDiv	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildFDiv"	FDiv	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildURem"	URem	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildSRem"	SRem	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildFRem"	FRem	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildShl"	Shl	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildLShr"	LShr	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildAShr"	AShr	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildAnd"	And	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildOr"	Or	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildXor"	Xor	(LLVMValueRef,	LLVMValueRef,		string)	: LLVMValueRef
+	import function "LLVMBuildBinOp"	BinOp	(LLVMOpcode,	LLVMValueRef,	LLVMValueRef,	string)	: LLVMValueRef
+	import function "LLVMBuildNeg"	Neg	(LLVMValueRef,			string)	: LLVMValueRef
+	import function "LLVMBuildNSWNeg"	NSWNeg	(LLVMValueRef,			string)	: LLVMValueRef
+	import function "LLVMBuildNUWNeg"	NUWNeg	(LLVMValueRef,			string)	: LLVMValueRef
+	import function "LLVMBuildFNeg"	FNeg	(LLVMValueRef,			string)	: LLVMValueRef
+	import function "LLVMBuildNot"	Not	(LLVMValueRef,			string)	: LLVMValueRef
+	
+	// Memory
+	import function "LLVMBuildMalloc"	Malloc	(LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildArrayMalloc"	ArrayMalloc	(LLVMTypeRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildAlloca"	Alloca	(LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildArrayAlloca"	ArrayAlloca	(LLVMTypeRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildFree"	Free	(LLVMValueRef)	: LLVMValueRef
+	import function "LLVMBuildLoad"	Load	(LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildStore"	Store	(LLVMValueRef, LLVMValueRef)	: LLVMValueRef
+	import function "LLVMBuildGEP"	GEP	(LLVMValueRef, *[] LLVMValueRef, unsigned, string)	: LLVMValueRef
+	import function "LLVMBuildInBoundsGEP"	InBoundsGEP	(LLVMValueRef, *[] LLVMValueRef, unsigned, string)	: LLVMValueRef
+	import function "LLVMBuildStructGEP"	StructGEP	(LLVMValueRef, unsigned, string)	: LLVMValueRef
+	import function "LLVMBuildGlobalString"	GlobalString	(string, string)	: LLVMValueRef
+	import function "LLVMBuildGlobalStringPtr"	GlobalStringPtr	(string, string)	: LLVMValueRef
+	
+	// Casts
+	import function "LLVMBuildTrunc"	Trunc	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildZExt"	ZExt	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildSExt"	SExt	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildFPToUI"	FPToUI	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildFPToSI"	FPToSI	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildUIToFP"	UIToFP	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildSIToFP"	SIToFP	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildFPTrunc"	FPTrunc	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildFPExt"	FPExt	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildPtrToInt"	PtrToInt	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildIntToPtr"	IntToPtr	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildBitCast"	BitCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildZExtOrBitCast"	ZExtOrBitCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildSExtOrBitCast"	SExtOrBitCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildTruncOrBitCast"	TruncOrBitCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildCast"	Cast	(LLVMOpcode, LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildPointerCast"	PointerCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildIntCast"	IntCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildFPCast"	FPCast	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	
+	// Comparisons
+	import function "LLVMBuildICmp"	ICmp	(LLVMIntPredicate, LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildFCmp"	FCmp	(LLVMRealPredicate, LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	
+	// Miscellaneous instructions
+	import function "LLVMBuildPhi"	Phi	(LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildCall"	Call	(LLVMValueRef, *[] LLVMValueRef, unsigned, string)	: LLVMValueRef
+	import function "LLVMBuildSelect"	Select	(LLVMValueRef, LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildVAArg"	VAArg	(LLVMValueRef, LLVMTypeRef, string)	: LLVMValueRef
+	import function "LLVMBuildExtractElement"	ExtractElement	(LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildInsertElement"	InsertElement	(LLVMValueRef, LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildShuffleVector"	ShuffleVector	(LLVMValueRef, LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildExtractValue"	ExtractValue	(LLVMValueRef, unsigned, string)	: LLVMValueRef
+	import function "LLVMBuildInsertValue"	InsertValue	(LLVMValueRef, LLVMValueRef, unsigned, string)	: LLVMValueRef
+	
+	import function "LLVMBuildIsNull"	IsNull	(LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildIsNotNull"	IsNotNull	(LLVMValueRef, string)	: LLVMValueRef
+	import function "LLVMBuildPtrDiff"	PtrDiff	(LLVMValueRef, LLVMValueRef, string)	: LLVMValueRef
+
+end
+
+import function LLVMCreateBuilderInContext	(LLVMContextRef)	: LLVMBuilderRef
+import function LLVMCreateBuilder	: LLVMBuilderRef
+
+// Add a case to the switch instruction
+import function LLVMAddCase	(LLVMValueRef, LLVMValueRef, LLVMBasicBlockRef)
+
+// Add a destination to the indirectbr instruction
+import function LLVMAddDestination	(LLVMValueRef, LLVMBasicBlockRef)
+
+//===-- Module providers --------------------------------------------------===
+
+import function LLVMCreateModuleProviderForExistingModule	(LLVMModuleRef)	: LLVMModuleProviderRef
+import function LLVMDisposeModuleProvider	(LLVMModuleProviderRef)
+
+//===-- Memory buffers ----------------------------------------------------===
+
+import function LLVMCreateMemoryBufferWithContentsOfFile	(string, LLVMMemoryBufferRef, *[] string)	: LLVMBool
+import function LLVMCreateMemoryBufferWithSTDIN	(LLVMMemoryBufferRef, *[] string)	: LLVMBool
+import function LLVMDisposeMemoryBuffer	(LLVMMemoryBufferRef)
+
+//===-- Pass Registry -----------------------------------------------------===
+
+import function LLVMGetGlobalPassRegistry	: LLVMPassRegistryRef
+
+//===-- Pass Managers -----------------------------------------------------===
+
+import function LLVMCreatePassManager		: LLVMPassManagerRef
+import function LLVMCreateFunctionPassManagerForModule	(LLVMModuleRef)	: LLVMPassManagerRef
+import function LLVMCreateFunctionPassManager	(LLVMModuleProviderRef)	: LLVMPassManagerRef
+import function LLVMRunPassManager	(LLVMPassManagerRef, LLVMModuleRef)	: LLVMBool
+import function LLVMInitializeFunctionPassManager	(LLVMPassManagerRef)	: LLVMBool
+import function LLVMRunFunctionPassManager	(LLVMPassManagerRef, LLVMValueRef)	: LLVMBool
+import function LLVMFinalizeFunctionPassManager	(LLVMPassManagerRef)	: LLVMBool
+import function LLVMDisposePassManager	(LLVMPassManagerRef)
+
+.private
+const string	= *[] Uint8
+const unsigned	= Uint32
+const int	= Intr32

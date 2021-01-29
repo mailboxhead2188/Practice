@@ -1,0 +1,191 @@
+//[of]:main
+function [windows] .c .cdecl .entry wmain (argc: Index, argv: *[] String) : Integer
+	return run (argc, argv)
+end
+
+function [unix] .c .cdecl .entry main (argc: Index, argv: *[] String) : Integer
+	return run (argc, argv)
+end
+
+function run (argc: Index, argv: *[] String) : Integer
+
+	StringBuffer initialize
+	var pool	: MemoryPool
+	pool initialize
+
+	// Parse the command line
+	//	
+	var filename	= nil cast (String)
+	var outFilename	= defaultOutputName
+	var verbose	= false
+	var debug	= false
+	var dump	= false
+	var version	= false
+	var importPath	=  ImportPath nil
+	var defines	: DefineDictionary
+	defines initialize
+	var i = Index : 1
+	while i < argc
+		var arg = argv [i]
+		if arg isEqual ("-verbose")
+			verbose = true
+		elsif arg isEqual ("-v")
+			version = true
+		elsif arg isEqual ("-debug")
+			debug = true
+		elsif arg isEqual ("-dump")
+			dump = true
+		elsif arg isEqual ("-o") and i < argc - 1
+			i ++
+			outFilename = getFilename (pool, argv [i])
+		elsif arg isEqual ("-I") and i < argc - 1
+			i ++
+			var tmp	: StringBuffer
+			tmp initialize
+			tmp << argv [i]
+			var filename = newString (pool, tmp string)
+			importPath = pool new (ImportPath, filename, importPath)
+			tmp release
+		elsif arg isEqual ("-D") and i < argc - 1
+			i ++
+			var arg = argv [i]
+			var equal = arg findChar ($=)
+			if equal isNil
+				var name = newString8FromString (pool, arg)
+				defines add (name, "")
+			else
+				var name = newString8FromSubString (pool, arg, equal ~ arg)
+				var value = newString8FromString (pool, equal + 1)
+				defines add (name, value)
+			end
+		else
+			filename = getFilename (pool, arg)
+		end
+		i ++
+	end
+
+	var ok = true
+	if version
+		output ("Copper 4.5.2")
+	elsif filename isNil
+		output ("Filename missing\n")
+		ok = false
+	else
+		addStandardDefinesTo (defines)
+		
+		// Build the module
+		var program : Program
+		var builder : Builder
+		program initialize (pool)
+		builder initialize (importPath, defines, program)
+		ok = builder compile (filename)
+	
+		// Generate code
+		if ok
+			var generator	: CodeGenerator
+			generator initialize (program, debug, dump)
+			var err = generator generate (outFilename)
+			if err notNil
+				output ("Error while saving object file: \a", err)
+				err delete
+				ok = false
+			end
+			generator release
+		end
+		
+		builder release
+		program release
+	end
+
+	if verbose
+		var stats : StringBuffer
+		stats initialize
+		stats << String : "================================\n"
+		stats << String : "Allocated in pool...: " << pool size << Char : 'lf
+		output (stats string)
+		stats release
+	end
+	defines release
+	pool release
+	StringBuffer release
+	
+	if verbose
+		var blocks	= leftBlock
+		var bytes	= leftBytes
+		StringBuffer initialize
+		output ("Left blocks: \a", blocks)
+		output ("Left bytes: \a", bytes)
+		StringBuffer release
+	end
+	
+	if ok
+		//output ("Finished.")
+		return 0
+	else
+		//output ("Failed.")
+		return 1
+	end
+end
+//[cf]
+//[of]:getFilename
+//[c]Creates a Filename from an argument.
+//[c]
+//[c]PARAMETERS
+//[c]	pool	--	The memory pool to store the filename.
+//[c]	arg	--	A platform independent relative filename (relative to the current working directory).
+//[c]
+//[c]RETURN VALUES
+//[c]	A copy of the argument, normalized to the native platform, stored
+//[c]	in the memory pool.
+//[c]
+function getFilename (pool: *MemoryPool, arg: String)
+
+	// Convert the argument to native name into buf
+	var buf : StringBuffer
+	buf initialize
+	File addNativeNameTo (buf, arg)
+
+	// Copy the result as a string into the pool
+	var filename = newString (pool, buf string)
+	
+	buf release
+	
+	// Return the result from the pool as a Filename
+	return filename
+
+end
+//[cf]
+//[of]:addStandardDefinesTo
+//[c]Adds some automatic defines:
+//[c]	p32	--	If the target architecture has 32 bit pointers
+//[c]	p64	--	If the target architecture has 64 bit pointers
+//[c]
+function addStandardDefinesTo (defines: *DefineDictionary)
+
+	if pointer_size == 4
+		defines add ("p32", "")
+	else
+		defines add ("p64", "")
+	end
+
+end
+//[cf]
+
+.private
+
+const .ifeq (backend, "coff")	defaultOutputName	= String : "a.obj"
+const .ifeq (backend, "elf")	defaultOutputName	= String : "a.o"
+const .ifeq (backend, "elf64")	defaultOutputName	= String : "a.o"
+const .ifeq (backend, "llvm")	defaultOutputName	= String : "a.bc"
+const .ifeq (backend, "c")	defaultOutputName	= String : "a.c"
+
+import .ifeq (backend, "coff")	"codegen/generator-x86"
+import .ifeq (backend, "elf")	"codegen/generator-x86"
+import .ifeq (backend, "elf64")	"codegen/generator-x64"
+import .ifeq (backend, "llvm")	"codegen/generator-llvm"
+import .ifeq (backend, "c")	"codegen/generator-c"
+
+import "builder"
+import "data/program"
+import "commons"
+import "std"

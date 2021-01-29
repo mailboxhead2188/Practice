@@ -1,0 +1,1002 @@
+//[of]:File Utils
+//[of]:ImportPath
+//[c]An ImportPath is a list of paths where the compiler searches for imported
+//[c]modules.
+//[c]
+struct ImportPath
+	var path	: String
+	var next	: *ImportPath
+
+	function initialize (path: String, next: *ImportPath)
+		self path = path
+		self next = next
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:Text Utils
+//[of]:Functions
+//[of]:newString
+function newString (pool: *MemoryPool, s: String)
+
+	var n = (s size + 1) toByteSize
+	var buf = pool allocateBytes (n)
+	copyBytes (buf, s, n)
+	return buf cast (String)
+
+end
+//[cf]
+//[of]:newString8FromString
+//[c]Converts a String to a String8. Codepoints between 0 and 255 are
+//[c]converted to 8-bit characters, other characters are replaced by
+//[c]a question mark '?'.
+//[c]
+//[c]PARAMETERS
+//[c]	pool	--	The memory pool to store the newly created String8.
+//[c]	s	--	The source string to be converted.
+//[c]
+//[c]RETURN VALUES
+//[c]	The 8-bit string (String8 type).
+//[c]
+function newString8FromString (pool: *MemoryPool, s: String)
+
+	// Pass 1: count chars
+	var n = Size : 0
+	s eachChar do c
+		n ++
+	end
+	
+	// Pass 2: allocate string and copy chars
+	var buf = pool allocateBytes (n + 1) cast (String8)
+	var p = buf
+	s eachChar do c
+		p [] = c < 256 cond c cast (Char8) else $?
+		p ++
+	end
+	p [] = 0
+
+	return buf
+
+end
+//[cf]
+//[of]:newString8FromSubString
+//[c]Converts a String to a String8. Codepoints between 0 and 255 are
+//[c]converted to 8-bit characters, other characters are replaced by
+//[c]a question mark '?'.
+//[c]
+//[c]PARAMETERS
+//[c]	pool	--	The memory pool to store the newly created String8.
+//[c]	s	--	The source sub-string to be converted.
+//[c]	size	--	The size of the string to be converted.
+//[c]
+//[c]RETURN VALUES
+//[c]	The 8-bit string (String8 type).
+//[c]
+function newString8FromSubString (pool: *MemoryPool, s: SubString, size: StringSize)
+
+	// Pass 1: count chars
+	var n = Size : 0
+	s eachChar (size) do c
+		n ++
+	end
+	
+	// Pass 2: allocate string and copy chars
+	var buf = pool allocateBytes (n + 1) cast (String8)
+	var p = buf
+	s eachChar (size) do c
+		p [] = c < 256 cond c cast (Char8) else $?
+		p ++
+	end
+	p [] = 0
+
+	return buf
+
+end
+//[cf]
+//[of]:newStringFromString8
+//[c]Converts a String8 to a Unicode String.
+//[c]
+//[c]PARAMETERS
+//[c]	pool	--	The memory pool to store the newly created String.
+//[c]	s	--	The 8-bit string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The String.
+//[c]
+function newStringFromString8 (pool: *MemoryPool, s: String8)
+
+	var sb: StringBuffer
+	sb initialize
+	sb << s
+	var string = newString (pool, sb string)
+	sb release
+	return string
+
+end
+//[cf]
+//[of]:newString16FromString8
+//[c]Converts a String8 to a String16. 8-bit characters are just zero-extended
+//[c]to 16-bit characters.
+//[c]
+//[c]PARAMETERS
+//[c]	pool	--	The memory pool to store the newly created String.
+//[c]	s	--	The 8-bit string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The String.
+//[c]
+function newString16FromString8 (pool: *MemoryPool, s: String8)
+
+	var size = s size + 1
+	var buf = pool allocateArray (Char16, size)
+	var src = s
+	var dst = buf
+	var limit = buf + size
+	while dst <> limit
+		dst [] = src [] cast (Char16)
+		src ++
+		dst ++
+	end
+	return buf cast (String16)
+
+end
+//[cf]
+
+//[of]:addUnsignedToBuffer
+//[c]Adds an unsigned integer to the buffer as a decimal ASCII string.
+//[c]
+function addUnsignedToBuffer (buffer: *MemoryBuffer, value: Uinteger)
+
+	var i	=  value
+	var digits	: [12] Byte
+	var limit	= digits + 12
+	var p	= limit
+	if i == 0
+		p --
+		p [] = $0
+	else
+		while i <> 0
+			p --
+			p [] = (i % 10) cast (Byte) + $0
+			i /= 10
+		end
+	end
+	buffer addBlock (p, limit ~ p)
+
+end
+//[cf]
+//[cf]
+//[of]:Char8
+stype Char8 : Uint8
+//[of]:	symbols
+'nul	= 0	// Null character
+'bel	= 7	// Bell
+'bs	= 8	// Backspace
+'tab	= 9	// Horizontal Tab
+'lf	= 10	// Line Feed
+'vt	= 11	// Vertical Tab
+'ff	= 12	// Form Feed
+'cr	= 13	// Carriage Return
+'sub	= 26	// Substitute
+'space	= 32	// White Space
+'del	= 127	// Delete
+//[cf]
+//[of]:	accessing
+//[of]:hash
+//[c]Returns a hash code for the code unit.
+//[c]
+function hash
+	return self cast (Size)
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toHexValue
+//[c]Converts the code unit to its hexa decimal value
+//[c]
+//[c]RETURN VALUES
+//[c]	$0 - $9	-- 0 to 9
+//[c]	$A - $F	-- 10 to 15
+//[c]	$a - $f	-- 10 to 15
+//[c]	other	-- 0
+//[c]
+function toHexValue
+	if self >= $0 and self <= $9
+		return (self - $0) toInteger
+	elsif self >= $A and self <= $F
+		return (self - ($A + 10)) toInteger
+	elsif self >= $a and self <= $f
+		return (self - ($a + 10)) toInteger
+	else
+		return 0
+	end
+end
+//[cf]
+//[of]:toLower
+//[c]Converts the code unit to lowercase.
+//[c]
+//[c]REMARKS
+//[c]	It applies only to an ASCII character, i.e. a code unit between 0 and 127.
+//[c]
+function toLower
+	if self >= $A and self <= $Z
+		return self + ($a - $A)
+	end
+	return self
+end
+//[cf]
+//[of]:toUpper
+//[c]Converts the code unit to uppercase.
+//[c]
+//[c]REMARKS
+//[c]	It applies only to an ASCII character, i.e. a code unit between 0 and 127.
+//[c]
+function toUpper
+	if self >= $a and self <= $z
+		return self + ($A - $a)
+	end
+	return self
+end
+
+//[cf]
+//[of]:toInteger
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toInteger
+	return self cast (Integer)
+end
+//[cf]
+//[of]:toUinteger
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toUinteger
+	return self cast (Uinteger)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isAlpha
+//[c]Returns true if the code unit is a letter ([a-zA-Z]).
+//[c]
+function isAlpha
+	return	(self >= $a and self <= $z) or
+		(self >= $A and self <= $Z)
+end
+//[cf]
+//[of]:isAlphaLower
+//[c]Returns true if the code unit is a lowercase letter ([a-z]).
+//[c]
+function isAlphaLower
+	return self >= $a and self <= $z
+end
+//[cf]
+//[of]:isAlphaUpper
+//[c]Returns true if the code unit is an uppercase letter ([A-Z]).
+//[c]
+function isAlphaUpper
+	return self >= $A and self <= $Z
+end
+//[cf]
+//[of]:isBlank
+//[c]Returns true if the code unit is a space (32) or tabulation (9)
+//[c]
+function isBlank
+	return self == 'space or self == 'tab
+end
+//[cf]
+//[of]:isDigit
+//[c]Returns true if the code unit is a digit ([0-9]).
+//[c]
+function isDigit
+	return self >= $0 and self <= $9
+end
+//[cf]
+//[of]:isHexDigit
+//[c]Returns true if the code unit is an hexadecimal digit ([0-9a-fA-F])
+//[c]
+function isHexDigit
+	return	self isDigit or 
+		(self >= $a and self <= $f) or
+		(self >= $A and self <= $F)
+end
+//[cf]
+//[of]:isNul
+//[c]Returns true if the code unit is the NUL control character (0).
+//[c]
+function isNul
+	return self == 'nul
+end
+//[cf]
+//[of]:notNul
+//[c]Returns true if the code unit is not the NUL control character (0).
+//[c]
+function notNul
+	return self <> 'nul
+end
+//[cf]
+//[of]:isIdentifierFirstChar
+function isIdentifierFirstChar
+	return (((self|0x20) - $a) < 26) or self == $_
+end
+//[cf]
+//[of]:isIdentifierChar
+function isIdentifierChar
+	return	(((self|0x20) - $a) < 26) or ((self - $0) < 10) or self == $_
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:String8
+stype String8 : *[] Char8
+//[of]:	symbols
+'empty = "" // The empty string
+//[cf]
+//[of]:	accessing
+//[of]:hash
+//[c]Computes and returns the hash code of the string.
+//[c]
+function hash
+	var p = self
+	var sum = Size : 0xA5A5A5A5
+	repeat
+		var c = p []
+		p ++
+		if c isNul
+			break
+		end
+		sum = (sum >> 1) + (c hash << 24)
+	end
+	return sum
+end
+//[cf]
+//[of]:size
+//[c]Computes and returns the number of bytes of the string.
+//[c]
+function size
+	var p = self
+	while p [] notNul
+		p ++
+	end
+	return p ~ self
+end
+//[cf]
+//[of]:to
+//[c]Returns the number of code units from 'self' to 'other'. 
+//[c]
+//[c]It is just the difference 'other - self' but as a StringSize type.
+//[c]
+function _dist (other: String8)
+	return (self super ~ other super) cast (String8Size)
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Tests if the two strings are equals.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The string to compare.
+//[c]
+function isEqual (other: String8)
+	var p1 = self
+	var p2 = other
+	repeat
+		var c = p1 []
+		var d = p2 []
+		if c <> d
+			return false
+		elsif c isNul
+			return true
+		end
+		p1 ++
+		p2 ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachChar
+function eachChar
+	var p = self
+	while p[] notNul
+		yield p[]
+		p ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	numerical conversion
+//[of]:decimalToUnsigned64
+//[c]Converts a decimal string to an integer.
+//[c]
+//[c]RETURN VALUES
+//[c]	value	--	The unsigned integer corresponding to the decimal formatted value.
+//[c]	ptr	--	The pointer to the first code unit that is not a decimal digit.
+//[c]
+function decimalToUnsigned64
+	var p = self
+	var value = Uinteger : 0
+	var base = Uinteger : 10
+	if p [0] == $0
+		if p [1] == $x or p [1] == $X
+			p += 2
+			base = 16
+		end
+	end
+
+	repeat
+		var c = p []
+		if c isNul
+			break
+		elsif c >= $a
+			c -= $a - 10
+		elsif c >= $A
+			c -= $A - 10
+		elsif c <= $9
+			c -= $0
+		else
+			c = 255
+		end
+		var n = c toUinteger
+		if n > base
+			break
+		end
+		value *= base
+		value += n
+		p ++
+	end
+	
+	return value cast (Uint64), p
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb: *StringBuffer)
+	self eachChar do c
+		sb << c cast (Char)
+	end
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:String8Size
+stype String8Size : Integer
+	function toByteSize
+		return self cast (Size)
+	end
+end
+//[cf]
+//[of]:Char16
+stype Char16 : Uint16
+//[of]:	symbols
+'nul	= 0	// Null character
+'bel	= 7	// Bell
+'bs	= 8	// Backspace
+'tab	= 9	// Horizontal Tab
+'lf	= 10	// Line Feed
+'vt	= 11	// Vertical Tab
+'ff	= 12	// Form Feed
+'cr	= 13	// Carriage Return
+'sub	= 26	// Substitute
+'space	= 32	// White Space
+'del	= 127	// Delete
+//[cf]
+//[of]:	accessing
+//[of]:hash
+//[c]Returns a hash code for the code unit.
+//[c]
+function hash
+	return self cast (Size)
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toInteger
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toInteger
+	return self : Integer
+end
+//[cf]
+//[of]:toUinteger
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toUinteger
+	return self cast (Uinteger)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isNul
+//[c]Returns true if the code unit is the NUL control character (0).
+//[c]
+function isNul
+	return self == 'nul
+end
+//[cf]
+//[of]:notNul
+//[c]Returns true if the code unit is not the NUL control character (0).
+//[c]
+function notNul
+	return self <> 'nul
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:String16
+stype String16 : *[] Char16
+//[of]:	symbols
+'empty = "" // The empty string
+//[cf]
+//[of]:	accessing
+//[of]:hash
+//[c]Computes and returns the hash code of the string.
+//[c]
+function hash
+	var p = self
+	var sum = Size : 0xA5A5A5A5
+	repeat
+		var c = p []
+		p ++
+		if c isNul
+			break
+		end
+		sum = (sum >> 1) + (c hash << 16)
+	end
+	return sum
+end
+//[cf]
+//[of]:size
+//[c]Computes and returns the number of bytes of the string.
+//[c]
+function size
+	var p = self
+	while p [] notNul
+		p ++
+	end
+	return p ~ self
+end
+//[cf]
+//[of]:to
+//[c]Returns the number of code units from 'self' to 'other'. 
+//[c]
+//[c]It is just the difference 'other - self' but as a StringSize type.
+//[c]
+function _dist (other: String16)
+	return (self super ~ other super) cast (String16Size)
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Tests if the two strings are equals.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The string to compare.
+//[c]
+function isEqual (other: String16)
+	var p1 = self
+	var p2 = other
+	repeat
+		var c = p1 []
+		var d = p2 []
+		if c <> d
+			return false
+		elsif c isNul
+			return true 
+		end
+		p1 ++
+		p2 ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachChar
+function eachChar
+	var p = self
+	while p[] notNul
+		yield p[]
+		p ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb: *StringBuffer)
+	self eachChar do c
+		sb << c cast (Char)
+	end
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:String16Size
+stype String16Size : Integer
+	function toByteSize
+		return self cast (Size) * Char16 size
+	end
+end
+//[cf]
+//[of]:LineNumber
+//[c]The line number type. The first line is 0. The special line number value
+//[c]'none (-1) is reserved to indicate that no line number is specified, for
+//[c]instance builtin definitions don't have a file or a line number.
+//[c]
+stype LineNumber : Integer
+	'none	= -1
+	
+	// upcast
+	function toInteger
+		return self upcast (Integer)
+	end
+end
+//[cf]
+//[cf]
+//[of]:Collection Utils
+//[of]:CollectionPool
+struct CollectionPool (T) : Collection (CollectionPoolElement (T))
+//[of]:	adding - removing
+//[of]:add
+function add (pool: *MemoryPool, object: *T)
+	var element = pool new (CollectionPoolElement (T), object)
+	self super add (element)
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+function each
+	self super each do e
+		yield e object
+	end
+end
+//[cf]
+//[of]:eachElement
+function eachElement
+	self super each do e
+		yield e
+	end
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:first
+function first
+	var first = self firstElement
+	if first isNil
+		return nil
+	end
+	return first object
+end
+//[cf]
+//[of]:last
+function last
+	var last = self lastElement
+	if last isNil
+		return nil
+	end
+	return last object
+end
+//[cf]
+//[of]:elementValue
+function elementValue (element)
+	return element object
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:CollectionPoolElement
+struct CollectionPoolElement (T)
+	var nextSibling	: *CollectionPoolElement (T)
+	var object	: *T
+
+	function initialize (object: *T)
+		self object = object
+	end
+
+	function skip (n: Integer)
+		var p = self
+		var i = n
+		while i <> 0 and p notNil
+			p = p nextSibling
+			i --
+		end
+		return p
+	end
+
+end
+//[cf]
+//[of]:DefineDictionary
+const DefineDictionary = SimpleDictionary (String8, String8, nil, nil)
+//[cf]
+//[cf]
+//[of]:Language Utils
+//[of]:Align
+// 32 bits only
+const align_byte	= Uinteger : 1
+const align_word	= Uinteger : 2
+const align_dword	= Uinteger : 4
+const align_qword	= Uinteger : 8
+//[cf]
+//[of]:Visibility
+stype Visibility : Byte
+	'public
+	'private
+end
+//[cf]
+//[of]:NamingConvention
+stype NamingConvention : Byte
+	'native
+	'c
+end
+//[cf]
+//[of]:CallingConvention
+stype CallingConvention : Byte
+	'default
+	'stdcall
+	'cdecl
+
+	function addToStringBuffer (sb: *StringBuffer)
+		sb << names [self]
+	end
+
+	static const names = *[]String : {"default", "stdcall", "cdecl"}
+end
+//[cf]
+//[of]:Identifiers
+//[c]This is the table of all identifiers used by the compiler.
+//[c]The table is initialized by the program as the Identifier Dictionary is 
+//[c]defined at the lexer level (each identifier has an associated token).
+//[c]
+var identifiers : Identifiers
+
+struct Identifiers
+	var empty	: Identifier
+	
+	// Types
+	var Anything	: Identifier
+	var Nil	: Identifier
+	var Bool	: Identifier
+	var Int8	: Identifier
+	var Int16	: Identifier
+	var Int32	: Identifier
+	var Int64	: Identifier
+	var Uint8	: Identifier
+	var Uint16	: Identifier
+	var Uint32	: Identifier
+	var Uint64	: Identifier
+	var Size	: Identifier
+	var Void	: Identifier
+	var Composite	: Identifier
+	
+	// Builtins identifiers
+	var main	: Identifier
+	var self	: Identifier
+	var size	: Identifier
+	var target	: Identifier
+	var cell	: Identifier
+	var nil	: Identifier
+	var super	: Identifier
+	var call	: Identifier
+	var true	: Identifier
+	var false	: Identifier
+	var release	: Identifier
+	var vargsSize	: Identifier
+	var vargsEach	: Identifier
+	var isNil	: Identifier
+	var notNil	: Identifier
+	var vtable	: Identifier
+	var _upcast	: Identifier
+	var _downcast	: Identifier
+	var _cast	: Identifier
+	
+	// Directives
+	var public	: Identifier
+	var private	: Identifier
+	var c	: Identifier
+	var stdcall	: Identifier
+	var cdecl	: Identifier
+	var fast	: Identifier
+	var entry	: Identifier
+	var mustcheck	: Identifier
+	var ifeq	: Identifier
+	var ifne	: Identifier
+	var ifdef	: Identifier
+	var ifndef	: Identifier
+	
+	// Operators
+	var at	: Identifier
+	var pos	: Identifier
+	var neg	: Identifier
+	var add	: Identifier
+	var sub	: Identifier
+	var dist	: Identifier
+	var mul	: Identifier
+	var div	: Identifier
+	var mod	: Identifier
+	var shl	: Identifier
+	var shr	: Identifier
+	var logicalAnd	: Identifier
+	var logicalOr	: Identifier
+	var logicalXor	: Identifier
+	var logicalNot	: Identifier
+	var eq	: Identifier
+	var ne	: Identifier
+	var le	: Identifier
+	var lt	: Identifier
+	var ge	: Identifier
+	var gt	: Identifier
+	var cadd	: Identifier
+	var csub	: Identifier
+	var cmul	: Identifier
+	var cdiv	: Identifier
+	var cmod	: Identifier
+	var cshl	: Identifier
+	var cshr	: Identifier
+	var cand	: Identifier
+	var cor	: Identifier
+	var cxor	: Identifier
+	var cinc	: Identifier
+	var cdec	: Identifier
+end
+
+const builtinIdentifiers = *[] String8 : {
+	"",
+	"Anything",
+	"Nil",
+	"Bool",
+	"Int8",
+	"Int16",
+	"Int32",
+	"Int64",
+	"Uint8",
+	"Uint16",
+	"Uint32",
+	"Uint64",
+	"Size",
+	"Void",
+	"Composite",
+
+	"main",
+	"self",
+	"size",
+	"target",
+	"cell",
+	"nil",
+	"super",
+	"call",
+	"true",
+	"false",
+	"release",
+	"vargs_size",
+	"vargs_each",
+	"isNil",
+	"notNil",
+	"vtable",
+	"upcast",
+	"downcast",
+	"cast",
+	
+	"public",
+	"private",
+	"c",
+	"stdcall",
+	"cdecl",
+	"fast",
+	"entry",
+	"mustcheck",
+	"ifeq",
+	"ifne",
+	"ifdef",
+	"ifndef",
+	
+	"_at",
+	"_pos",
+	"_neg",
+	"_add",
+	"_sub",
+	"_dist",
+	"_mul",
+	"_div",
+	"_mod",
+	"_shl",
+	"_shr",
+	"_and",
+	"_or",
+	"_xor",
+	"_not",
+	"_eq",
+	"_ne",
+	"_le",
+	"_lt",
+	"_ge",
+	"_gt",
+	"_assign_add",
+	"_assign_sub",
+	"_assign_mul",
+	"_assign_div",
+	"_assign_mod",
+	"_assign_shl",
+	"_assign_shr",
+	"_assign_and",
+	"_assign_or",
+	"_assign_xor",
+	"_assign_inc",
+	"_assign_dec",
+	nil }
+//[cf]
+//[of]:Identifier
+stype Identifier : Pointer
+	function string
+		return self cast (String8)
+	end
+	
+	function isEqual (str: String8, size: String8Size)
+		return areBytesEquals (self, str, size toByteSize) and self string [size] == 0
+	end
+	
+	function hash
+		return self cast (Size)
+	end
+	
+	function addToStringBuffer (sb: *StringBuffer)
+		sb << self string
+	end
+end
+//[cf]
+//[of]:ErrorReporter
+struct ErrorReporter
+
+	function reportError (	file	: String,
+		line	: LineNumber, 
+		fmt	: String,
+		... )
+
+		// Format the message and print it
+		var s	: StringBuffer
+		s initialize
+		if file notNil
+			s << file 
+			s addString(":")
+			s << line 
+			s addString(": ")
+		end
+		s addFormat (fmt, ...)
+		output (s string)
+		s release
+	end
+
+end
+//[cf]
+
+//[of]:sizeToUnsigned
+//[c]Converts a Size integer to an Uint32 integer. This is useful for 32-bit 
+//[c]platform, remember that the compiler may have to cross compile from a 
+//[c]64-bit platform (the Size type depends on the source platform).
+//[c]
+function sizeToUnsigned (s: Size)
+	return s cast (Uinteger)
+end
+//[cf]
+//[of]:sizeToUnsigned64
+//[c]Converts a Size integer to an Uint64 integer. This is useful for 64-bit 
+//[c]platform, remember that the compiler may have to cross compile from a 
+//[c]64-bit platform (the Size type depends on the source platform).
+//[c]
+function sizeToUnsigned64 (s: Size)
+	return s cast (Uint64)
+end
+//[cf]
+//[cf]
+
+.private
+import "std"

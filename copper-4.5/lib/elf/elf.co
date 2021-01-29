@@ -1,0 +1,263 @@
+// ELF Header
+
+const EI_NIDENT = Size : 16
+
+struct Elf32_Ehdr
+	var ident	: [EI_NIDENT] Byte
+	var type	: Half
+	var machine	: Half
+	var version	: Word
+	var entry	: Address32
+	var phoff	: Off32
+	var shoff	: Off32
+	var flags	: Word
+	var ehsize	: Half
+	var phentsize	: Half
+	var phnum	: Half
+	var shentsize	: Half
+	var shnum	: Half
+	var shstrndx	: Half
+end
+
+struct Elf64_Ehdr
+	var ident	: [EI_NIDENT] Byte
+	var type	: Half
+	var machine	: Half
+	var version	: Word
+	var entry	: Address64
+	var phoff	: Off64
+	var shoff	: Off64
+	var flags	: Word
+	var ehsize	: Half
+	var phentsize	: Half
+	var phnum	: Half
+	var shentsize	: Half
+	var shnum	: Half
+	var shstrndx	: Half
+end
+
+struct Elf32_Shdr
+	var name	: Word
+	var type	: Word
+	var flags	: Word
+	var addr	: Address32
+	var offset	: Off32
+	var size	: Word
+	var link	: Word
+	var info	: Word
+	var addralign	: Word
+	var entsize	: Word
+end
+
+struct Elf64_Shdr
+	var name	: Word
+	var type	: Word
+	var flags	: ShdrFlags64
+	var addr	: Address64
+	var offset	: Off64
+	var size	: Xword
+	var link	: Word
+	var info	: Word
+	var addralign	: Xword
+	var entsize	: Xword
+end
+
+struct Elf32_Sym
+	var name	: Word
+	var value	: Address32
+	var size	: Word
+	var info	: Byte
+	var other	: Byte
+	var shndx	: Half
+end
+
+struct Elf64_Sym
+	var name	: Word
+	var info	: Byte
+	var other	: Byte
+	var shndx	: Half
+	var value	: Address64
+	var size	: Xword
+end
+
+struct Elf32_Rel
+	var offset	: Address32
+	var info	: Word
+	
+	function set (offset: Address32, symbol: Word, type: Byte)
+		self offset	= offset
+		self info	= (symbol << 8) + (type cast (Word))
+	end
+end
+
+struct Elf32_Rela
+	var offset	: Address32
+	var info	: Word
+	var addend	: Sword
+end
+
+struct Elf64_Rel
+	var offset	: Address64
+	var info	: Xword
+
+	function set (offset: Address64, symbol: Word, type: Byte)
+		self offset	= offset
+		self info	= (symbol cast (Xword) << 32) + (type cast (Xword))
+	end
+end
+
+struct Elf64_Rela
+	var offset	: Address64
+	var info	: Xword
+	var addend	: Sxword
+end
+
+const ET_NONE	= Half : 0	// No file type
+const ET_REL	= Half : 1	// Relocatable file
+const ET_EXEC	= Half : 2	// Executable file
+const ET_DYN	= Half : 3	// Shared object file
+const ET_CORE	= Half : 4	// Core file
+const ET_LOPROC	= Half : 0xFF00	// Processor-specific
+const ET_HIPROC	= Half : 0xFFFF	// Processor-specific
+		
+const EM_NONE	= Half : 0	// No machine
+const EM_M32	= Half : 1	// AT&T WE 32100
+const EM_SPARC	= Half : 2	// SPARC
+const EM_386	= Half : 3	// Intel 80386
+const EM_68K	= Half : 4	// Motorola 68000
+const EM_88K	= Half : 5	// Motorola 88000
+const EM_860	= Half : 7	// Intel 80860
+const EM_MIPS	= Half : 8	// MIPS RS3000
+const EM_X86_64	= Half : 62	// AMD x86-64
+		
+const EV_NONE	= Word : 0	// Invalid version
+const EV_CURRENT	= Word : 1	// Current version
+		
+const ELFOSABI_NONE	= Byte : 0
+const ELFOSABI_LINUX	= Byte : 3
+	
+const SHN_UNDEF	= Half : 0
+const SHN_LORESERVE	= Half : 0xFF00
+const SHN_LOPROC	= Half : 0xFF00
+const SHN_HIPROC	= Half : 0xFF1F
+const SHN_ABS	= Half : 0xFFF1
+const SHN_COMMON	= Half : 0xFFF2
+const SHN_HIRESERVE	= Half : 0xFFFF
+	
+const SHT_NULL	= Word : 0
+const SHT_PROGBITS	= Word : 1
+const SHT_SYMTAB	= Word : 2
+const SHT_STRTAB	= Word : 3
+const SHT_RELA	= Word : 4
+const SHT_HASH	= Word : 5
+const SHT_DYNAMIC	= Word : 6
+const SHT_NOTE	= Word : 7
+const SHT_NOBITS	= Word : 8
+const SHT_REL	= Word : 9
+const SHT_SHLIB	= Word : 10
+const SHT_DYNSYM	= Word : 11
+const SHT_LOPROC	= Word : 0x70000000
+const SHT_HIPROC	= Word : 0x7FFFFFFF
+const SHT_LOUSER	= Word : 0x80000000
+const SHT_HIUSER	= Word : 0xFFFFFFFF
+	
+const SHF_WRITE	= Word : 0x1
+const SHF_ALLOC	= Word : 0x2
+const SHF_EXECINSTR	= Word : 0x4
+const SHF_MASKPROC	= Word : 0xF0000000
+
+stype ShdrFlags64 : Xword
+	'write	= 0x1
+	'alloc	= 0x2
+	'execInstr	= 0x4
+	'maskProc	= 0xF0000000
+end
+
+const STN_UNDEF	= Integer : 0
+	
+const STB_LOCAL	= Integer : 0
+const STB_GLOBAL	= Integer : 1
+const STB_WEAK	= Integer : 2
+const STB_LOPROC	= Integer : 13
+const STB_HIPROC	= Integer : 15
+	
+const STT_NOTYPE	= Integer : 0
+const STT_OBJECT	= Integer : 1
+const STT_FUNC	= Integer : 2
+const STT_SECTION	= Integer : 3
+const STT_FILE	= Integer : 4
+const STT_LOPROC	= Integer : 13
+const STT_HIPROC	= Integer : 15
+	
+const R_386_NONE	= Byte : 0	// none	none
+const R_386_32	= Byte : 1	// word32	S + A
+const R_386_PC32	= Byte : 2	// word32	S + A - P
+const R_386_GOT32	= Byte : 3	// word32	G + A - P
+const R_386_PLT32	= Byte : 4	// word32	L + A - P
+const R_386_COPY	= Byte : 5	// none	none
+const R_386_GLOB_DAT	= Byte : 6	// word32	S
+const R_386_JMP_SLOT	= Byte : 7	// word32	S
+const R_386_RELATIVE	= Byte : 8	// word32	B + A
+const R_386_GOTOFF	= Byte : 9	// word32	S + A - GOT
+const R_386_GOTPC	= Byte : 10	// word32	GOT + A - P
+
+const R_X86_64_NONE	= Byte : 0
+const R_X86_64_64	= Byte : 1
+const R_X86_64_PC32	= Byte : 2
+const R_X86_64_GOT32	= Byte : 3
+const R_X86_64_PLT32	= Byte : 4
+const R_X86_64_COPY	= Byte : 5
+const R_X86_64_GLOB_DAT	= Byte : 6
+const R_X86_64_JUMP_SLOT	= Byte : 7
+const R_X86_64_RELATIVE	= Byte : 8
+const R_X86_64_GOTPCREL	= Byte : 9
+const R_X86_64_32	= Byte : 10
+
+function ELF32_ST_BIND (i)
+	return i >> 4
+end
+
+function ELF32_ST_TYPE (i)
+	return i & 0xF
+end
+
+function ELF32_ST_INFO (b,t)
+	return ((b << 4) + (t & 0xF)) cast (Byte)
+end
+
+function ELF64_ST_BIND (i)
+	return i >> 4
+end
+
+function ELF64_ST_TYPE (i)
+	return i & 0xF
+end
+
+function ELF64_ST_INFO (b,t)
+	return ((b << 4) + (t & 0xF)) cast (Byte)
+end
+
+function ELF32_R_SYM (i)
+	return i >> 8
+end
+
+function ELF32_R_TYPE (i)
+	return i & 255
+end
+	
+function ELF32_R_INFO (s: Word, t: Word)
+	return (s << 8) + t
+end
+
+.private
+const Address32	= Uint32
+const Off32	= Uint32
+const Address64	= Uint64
+const Off64	= Uint64
+const Half	= Uint16
+const Sword	= Int32
+const Word	= Uint32
+const Sxword	= Int64
+const Xword	= Uint64
+
+import "std"

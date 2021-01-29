@@ -1,0 +1,89 @@
+# GNU Makefile to build copper
+#
+# Usage:
+#	gmake	-- Build the COFF version
+#	gmake BACKEND=elf	-- Build the ELF version
+#	gmake BACKEND=llvm	-- Build the LLVM version
+#	gmake BACKEND=c	-- Build the C version
+#
+# Required Variables
+#	LLVMLIB	-- the path to the LLVM lib files
+#
+# OPTIONS
+# Debug:
+#	DEBUG=1
+#
+# Profiling:
+#	CFLAGS=-debug LFLAGS="/debug /fixed:no"
+#
+# Building with a specified compiler:
+#	COPPER=<path to copper-coff.exe>
+#
+
+OUTDIR=.
+COPPER=copper
+CFLAGS=
+LINK=link
+LFLAGS=
+OS=windows
+BACKEND=coff
+TARGET=32
+
+ifdef DEBUG
+	CFLAGS += -debug -D debug
+	LFLAGS += /debug
+	CLFLAGS = /Zi /Fd$(OUTDIR)\copper-$(BACKEND).pdb
+else
+	CLFLAGS = /O1
+endif
+
+.SILENT:
+
+all: $(OUTDIR)/copper-$(BACKEND).exe
+
+$(OUTDIR)/copper-coff.exe: $(OUTDIR)/copper-coff.obj
+	@echo Linking...
+	$(LINK) $(LFLAGS) /nologo /defaultlib:msvcrt /incremental:no $? /out:$@
+
+$(OUTDIR)/copper-elf.exe: $(OUTDIR)/copper-elf.obj
+	@echo Linking...
+	$(LINK) $(LFLAGS) /nologo /defaultlib:msvcrt /incremental:no $? /out:$@
+
+$(OUTDIR)/copper-elf64.exe: $(OUTDIR)/copper-elf64.obj
+	@echo Linking...
+	$(LINK) $(LFLAGS) /nologo /defaultlib:msvcrt /incremental:no $? /out:$@
+
+$(OUTDIR)/copper-c.exe: $(OUTDIR)/copper-c.obj
+	@echo Linking...
+	$(LINK) $(LFLAGS) /nologo /defaultlib:msvcrt /incremental:no /fixed:no $? /out:$@
+
+$(OUTDIR)/copper-llvm.exe: $(OUTDIR)/copper-llvm.obj
+	@echo Linking...
+	$(LINK) $(LFLAGS) /nologo /incremental:no /defaultlib:msvcrt /LIBPATH:$(LLVMLIB) $? shell32.lib advapi32.lib LLVMSupport.lib LLVMCore.lib LLVMBitWriter.lib /out:$@
+
+$(OUTDIR)/copper-$(BACKEND).obj: \
+	lib/std.co \
+	lib/private/windows.co \
+	lib/llvm/BitWriter.co \
+	lib/llvm/Core.co \
+	lib/llvm/Initialization.co \
+	lib/llvm/Target.co \
+	lib/elf/elf.co \
+	lib/coff/coff.co \
+	src/codegen/generator-llvm.co \
+	src/codegen/generator-c.co \
+	src/codegen/generator-x86.co \
+	src/codegen/generator-x64.co \
+	src/data/object-file-coff.co \
+	src/data/object-file-elf.co \
+	src/data/object-file-elf64.co \
+	src/data/ast.co \
+	src/data/token.co \
+	src/data/program.co \
+	src/commons.co \
+	src/lexer.co \
+	src/parser.co \
+	src/builder.co \
+	src/main.co
+	@echo Compiling...
+	$(COPPER) -I lib -I src -D "backend=$(BACKEND)" -D $(OS) -D "target=$(TARGET)" $(CFLAGS) -o $@ src\main.co

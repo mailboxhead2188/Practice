@@ -1,0 +1,629 @@
+
+const DWARF_VERSION	= Uinteger : 4	// Default dwarf version we output.
+const DW_CIE_VERSION	= Uinteger : 1	// Common frame information version.
+const DW_PUBTYPES_VERSION	= Uinteger : 2	// Section version number for .debug_pubtypes.
+const DW_PUBNAMES_VERSION	= Uinteger : 2	// Section version number for .debug_pubnames.
+const DW_ARANGES_VERSION	= Uinteger : 2	// Section version number for .debug_aranges.
+
+//[of]:DwarfTag
+stype DwarfTag : Uint8 // DW_TAG_
+	'array_type	= 0x01
+	'class_type	= 0x02
+	'entry_point	= 0x03
+	'enumeration_type	= 0x04
+	'formal_parameter	= 0x05
+	'imported_declaration	= 0x08
+	'label	= 0x0A
+	'lexical_block	= 0x0B
+	'member	= 0x0D
+	'pointer_type	= 0x0F
+	'reference_type	= 0x10
+	'compile_unit	= 0x11
+	'string_type	= 0x12
+	'structure_type	= 0x13
+	'subroutine_type	= 0x15
+	'typedef	= 0x16
+	'union_type	= 0x17
+	'unspecified_parameters	= 0x18
+	'variant	= 0x19
+	'common_block	= 0x1A
+	'common_inclusion	= 0x1B
+	'inheritance	= 0x1C
+	'inlined_subroutine	= 0x1D
+	'module	= 0x1E
+	'ptr_to_member_type	= 0x1F
+	'set_type	= 0x20
+	'subrange_type	= 0x21
+	'with_stmt	= 0x22
+	'access_declaration	= 0x23
+	'base_type	= 0x24
+	'catch_block	= 0x25
+	'const_type	= 0x26
+	'constant	= 0x27
+	'enumerator	= 0x28
+	'file_type	= 0x29
+	'friend	= 0x2A
+	'namelist	= 0x2B
+	'namelist_item	= 0x2C
+	'packed_type	= 0x2D
+	'subprogram	= 0x2E
+	'template_type_parameter	= 0x2F
+	'template_value_parameter	= 0x30
+	'thrown_type	= 0x31
+	'try_block	= 0x32
+	'variant_part	= 0x33
+	'variable	= 0x34
+	'volatile_type	= 0x35
+	'dwarf_procedure	= 0x36
+	'restrict_type	= 0x37
+	'interface_type	= 0x38
+	'namespace	= 0x39
+	'imported_module	= 0x3A
+	'unspecified_type	= 0x3B
+	'partial_unit	= 0x3C
+	'imported_unit	= 0x3D
+	'condition	= 0x3F
+	'shared_type	= 0x40
+	'type_unit	= 0x41
+	'rvalue_reference_type	= 0x42
+	'template_alias	= 0x43
+end
+
+//[c]'MIPS_loop	= 0x4081
+//[c]'format_label	= 0x4101
+//[c]'function_template	= 0x4102
+//[c]'class_template	= 0x4103
+//[c]'GNU_template_template_param	= 0x4106
+//[c]'GNU_template_parameter_pack	= 0x4107
+//[c]'GNU_formal_parameter_pack	= 0x4108
+//[c]'lo_user	= 0x4080
+//[c]'APPLE_property	= 0x4200
+//[c]'hi_user	= 0xFFFF
+//[cf]
+//[of]:DwarfAttribute
+stype DwarfAttribute : Uint8 // DW_AT_
+	'sibling	= 0x01
+	'location	= 0x02
+	'name	= 0x03
+	'ordering	= 0x09
+	'byte_size	= 0x0B
+	'bit_offset	= 0x0C
+	'bit_size	= 0x0D
+	'stmt_list	= 0x10
+	'low_pc	= 0x11
+	'high_pc	= 0x12
+	'language	= 0x13
+	'discr	= 0x15
+	'discr_value	= 0x16
+	'visibility	= 0x17
+	'import	= 0x18
+	'string_length	= 0x19
+	'common_reference	= 0x1A
+	'comp_dir	= 0x1B
+	'const_value	= 0x1C
+	'containing_type	= 0x1D
+	'default_value	= 0x1E
+	'inline	= 0x20
+	'is_optional	= 0x21
+	'lower_bound	= 0x22
+	'producer	= 0x25
+	'prototyped	= 0x27
+	'return_addr	= 0x2A
+	'start_scope	= 0x2C
+	'bit_stride	= 0x2E
+	'upper_bound	= 0x2F
+	'abstract_origin	= 0x31
+	'accessibility	= 0x32
+	'address_class	= 0x33
+	'artificial	= 0x34
+	'base_types	= 0x35
+	'calling_convention	= 0x36
+	'count	= 0x37
+	'data_member_location	= 0x38
+	'decl_column	= 0x39
+	'decl_file	= 0x3A
+	'decl_line	= 0x3B
+	'declaration	= 0x3C
+	'discr_list	= 0x3D
+	'encoding	= 0x3E
+	'external	= 0x3F
+	'frame_base	= 0x40
+	'friend	= 0x41
+	'identifier_case	= 0x42
+	'macro_info	= 0x43
+	'namelist_item	= 0x44
+	'priority	= 0x45
+	'segment	= 0x46
+	'specification	= 0x47
+	'static_link	= 0x48
+	'type	= 0x49
+	'use_location	= 0x4A
+	'variable_parameter	= 0x4B
+	'virtuality	= 0x4C
+	'vtable_elem_location	= 0x4D
+	'allocated	= 0x4E
+	'associated	= 0x4F
+	'data_location	= 0x50
+	'byte_stride	= 0x51
+	'entry_pc	= 0x52
+	'use_UTF8	= 0x53
+	'extension	= 0x54
+	'ranges	= 0x55
+	'trampoline	= 0x56
+	'call_column	= 0x57
+	'call_file	= 0x58
+	'call_line	= 0x59
+	'description	= 0x5A
+	'binary_scale	= 0x5B
+	'decimal_scale	= 0x5C
+	'small	= 0x5D
+	'decimal_sign	= 0x5E
+	'digit_count	= 0x5F
+	'picture_string	= 0x60
+	'mutable	= 0x61
+	'threads_scaled	= 0x62
+	'explicit	= 0x63
+	'object_pointer	= 0x64
+	'endianity	= 0x65
+	'elemental	= 0x66
+	'pure	= 0x67
+	'recursive	= 0x68
+	'signature	= 0x69
+	'main_subprogram	= 0x6A
+	'data_bit_offset	= 0x6B
+	'const_expr	= 0x6C
+	'enum_class	= 0x6D
+	'linkage_name	= 0x6E
+end
+
+//[c]	'lo_user	= 0x2000
+//[c]	'hi_user	= 0x3FFF
+//[c]	
+//[c]	'MIPS_loop_begin	= 0x2002
+//[c]	'MIPS_tail_loop_begin	= 0x2003
+//[c]	'MIPS_epilog_begin	= 0x2004
+//[c]	'MIPS_loop_unroll_factor	= 0x2005
+//[c]	'MIPS_software_pipeline_depth	= 0x2006
+//[c]	'MIPS_linkage_name	= 0x2007
+//[c]	'MIPS_stride	= 0x2008
+//[c]	'MIPS_abstract_name	= 0x2009
+//[c]	'MIPS_clone_origin	= 0x200A
+//[c]	'MIPS_has_inlines	= 0x200B
+//[c]	'MIPS_stride_byte	= 0x200C
+//[c]	'MIPS_stride_elem	= 0x200D
+//[c]	'MIPS_ptr_dopetype	= 0x200E
+//[c]	'MIPS_allocatable_dopetype	= 0x200F
+//[c]	'MIPS_assumed_shape_dopetype	= 0x2010
+//[c]	
+//[c]	// This one appears to have only been implemented by Open64 for
+//[c]	// fortran and may conflict with other extensions.
+//[c]	'MIPS_assumed_size	= 0x2011
+//[c]	
+//[c]	// GNU extensions
+//[c]	'sf_names	= 0x2101
+//[c]	'src_info	= 0x2102
+//[c]	'mac_info	= 0x2103
+//[c]	'src_coords	= 0x2104
+//[c]	'body_begin	= 0x2105
+//[c]	'body_end	= 0x2106
+//[c]	'GNU_vector	= 0x2107
+//[c]	'GNU_template_name	= 0x2110
+//[c]	
+//[c]	'GNU_odr_signature	= 0x210F
+//[c]	
+//[c]	// Extensions for Fission proposal.
+//[c]	'GNU_dwo_name	= 0x2130
+//[c]	'GNU_dwo_id	= 0x2131
+//[c]	'GNU_ranges_base	= 0x2132
+//[c]	'GNU_addr_base	= 0x2133
+//[c]	'GNU_pubnames	= 0x2134
+//[c]	'GNU_pubtypes	= 0x2135
+//[cf]
+//[of]:DwarfForm
+stype DwarfForm : Uint8 // DW_FORM_
+	'addr	= 0x01
+	'block2	= 0x03
+	'block4	= 0x04
+	'data2	= 0x05
+	'data4	= 0x06
+	'data8	= 0x07
+	'string	= 0x08
+	'block	= 0x09
+	'block1	= 0x0A
+	'data1	= 0x0B
+	'flag	= 0x0C
+	'sdata	= 0x0D
+	'strp	= 0x0E
+	'udata	= 0x0F
+	'ref_addr	= 0x10
+	'ref1	= 0x11
+	'ref2	= 0x12
+	'ref4	= 0x13
+	'ref8	= 0x14
+	'ref_udata	= 0x15
+	'indirect	= 0x16
+	'sec_offset	= 0x17
+	'exprloc	= 0x18
+	'flag_present	= 0x19
+	'ref_sig8	= 0x20
+	
+//[c]	// Extensions for Fission proposal
+//[c]	'GNU_addr_index	= 0x1F01
+//[c]	'GNU_str_index	= 0x1F02
+end
+//[cf]
+//[of]:LocationAtom
+stype LocationAtom : Byte // DW_OP_
+	// Operation encodings
+	'addr	= 0x03
+	'deref	= 0x06
+	'const1u	= 0x08
+	'const1s	= 0x09
+	'const2u	= 0x0A
+	'const2s	= 0x0B
+	'const4u	= 0x0C
+	'const4s	= 0x0D
+	'const8u	= 0x0E
+	'const8s	= 0x0F
+	'constu	= 0x10
+	'consts	= 0x11
+	'dup	= 0x12
+	'drop	= 0x13
+	'over	= 0x14
+	'pick	= 0x15
+	'swap	= 0x16
+	'rot	= 0x17
+	'xderef	= 0x18
+	'abs	= 0x19
+	'and	= 0x1A
+	'div	= 0x1B
+	'minus	= 0x1C
+	'mod	= 0x1D
+	'mul	= 0x1E
+	'neg	= 0x1F
+	'not	= 0x20
+	'or	= 0x21
+	'plus	= 0x22
+	'plus_uconst	= 0x23
+	'shl	= 0x24
+	'shr	= 0x25
+	'shra	= 0x26
+	'xor	= 0x27
+	'skip	= 0x2F
+	'bra	= 0x28
+	'eq	= 0x29
+	'ge	= 0x2A
+	'gt	= 0x2B
+	'le	= 0x2C
+	'lt	= 0x2D
+	'ne	= 0x2E
+	'lit0	= 0x30
+	'lit1	= 0x31
+	'lit2	= 0x32
+	'lit3	= 0x33
+	'lit4	= 0x34
+	'lit5	= 0x35
+	'lit6	= 0x36
+	'lit7	= 0x37
+	'lit8	= 0x38
+	'lit9	= 0x39
+	'lit10	= 0x3A
+	'lit11	= 0x3B
+	'lit12	= 0x3C
+	'lit13	= 0x3D
+	'lit14	= 0x3E
+	'lit15	= 0x3F
+	'lit16	= 0x40
+	'lit17	= 0x41
+	'lit18	= 0x42
+	'lit19	= 0x43
+	'lit20	= 0x44
+	'lit21	= 0x45
+	'lit22	= 0x46
+	'lit23	= 0x47
+	'lit24	= 0x48
+	'lit25	= 0x49
+	'lit26	= 0x4A
+	'lit27	= 0x4B
+	'lit28	= 0x4C
+	'lit29	= 0x4D
+	'lit30	= 0x4E
+	'lit31	= 0x4F
+	'reg0	= 0x50
+	'reg1	= 0x51
+	'reg2	= 0x52
+	'reg3	= 0x53
+	'reg4	= 0x54
+	'reg5	= 0x55
+	'reg6	= 0x56
+	'reg7	= 0x57
+	'reg8	= 0x58
+	'reg9	= 0x59
+	'reg10	= 0x5A
+	'reg11	= 0x5B
+	'reg12	= 0x5C
+	'reg13	= 0x5D
+	'reg14	= 0x5E
+	'reg15	= 0x5F
+	'reg16	= 0x60
+	'reg17	= 0x61
+	'reg18	= 0x62
+	'reg19	= 0x63
+	'reg20	= 0x64
+	'reg21	= 0x65
+	'reg22	= 0x66
+	'reg23	= 0x67
+	'reg24	= 0x68
+	'reg25	= 0x69
+	'reg26	= 0x6A
+	'reg27	= 0x6B
+	'reg28	= 0x6C
+	'reg29	= 0x6D
+	'reg30	= 0x6E
+	'reg31	= 0x6F
+	'breg0	= 0x70
+	'breg1	= 0x71
+	'breg2	= 0x72
+	'breg3	= 0x73
+	'breg4	= 0x74
+	'breg5	= 0x75
+	'breg6	= 0x76
+	'breg7	= 0x77
+	'breg8	= 0x78
+	'breg9	= 0x79
+	'breg10	= 0x7A
+	'breg11	= 0x7B
+	'breg12	= 0x7C
+	'breg13	= 0x7D
+	'breg14	= 0x7E
+	'breg15	= 0x7F
+	'breg16	= 0x80
+	'breg17	= 0x81
+	'breg18	= 0x82
+	'breg19	= 0x83
+	'breg20	= 0x84
+	'breg21	= 0x85
+	'breg22	= 0x86
+	'breg23	= 0x87
+	'breg24	= 0x88
+	'breg25	= 0x89
+	'breg26	= 0x8A
+	'breg27	= 0x8B
+	'breg28	= 0x8C
+	'breg29	= 0x8D
+	'breg30	= 0x8E
+	'breg31	= 0x8F
+	'regx	= 0x90
+	'fbreg	= 0x91
+	'bregx	= 0x92
+	'piece	= 0x93
+	'deref_size	= 0x94
+	'xderef_size	= 0x95
+	'nop	= 0x96
+	'push_object_address	= 0x97
+	'call2	= 0x98
+	'call4	= 0x99
+	'call_ref	= 0x9A
+	'form_tls_address	= 0x9B
+	'call_frame_cfa	= 0x9C
+	'bit_piece	= 0x9D
+	'implicit_value	= 0x9E
+	'stack_value	= 0x9F
+	'lo_user	= 0xE0
+	'hi_user	= 0xFF
+	
+	// Extensions for GNU-style thread-local storage.
+	'GNU_push_tls_address	= 0xE0
+	
+	// Extensions for Fission proposal.
+	'GNU_addr_index	= 0xFB
+	'GNU_const_index	= 0xFC
+end
+//[cf]
+//[of]:TypeKind
+stype TypeKind : Byte // DW_ATE_
+	'address	= 0x01
+	'boolean	= 0x02
+	'complex_float	= 0x03
+	'float	= 0x04
+	'signed	= 0x05
+	'signed_char	= 0x06
+	'unsigned	= 0x07
+	'unsigned_char	= 0x08
+	'imaginary_float	= 0x09
+	'packed_decimal	= 0x0A
+	'numeric_string	= 0x0B
+	'edited	= 0x0C
+	'signed_fixed	= 0x0D
+	'unsigned_fixed	= 0x0E
+	'decimal_float	= 0x0F
+	'UTF	= 0x10
+	'lo_user	= 0x80
+	'hi_user	= 0xFF
+end
+//[cf]
+//[of]:DecimalSignEncoding
+stype DecimalSignEncoding // DW_DS_
+	'unsigned	= 0x01
+	'leading_overpunch	= 0x02
+	'trailing_overpunch	= 0x03
+	'leading_separate	= 0x04
+	'trailing_separate	= 0x05
+end
+//[cf]
+//[of]:EndianityEncoding
+stype EndianityEncoding // DW_END_
+	'default	= 0x00
+	'big	= 0x01
+	'little	= 0x02
+	'lo_user	= 0x40
+	'hi_user	= 0xff
+end
+//[cf]
+//[of]:AccessAttribute
+stype AccessAttribute // DW_ACCESS_
+	'public	= 0x01
+	'protected	= 0x02
+	'private	= 0x03
+end
+//[cf]
+//[of]:VisibilityAttribute
+stype VisibilityAttribute // DW_VIS_
+	'local	= 0x01
+	'exported	= 0x02
+	'qualified	= 0x03
+end
+//[cf]
+//[of]:VirtualityAttribute
+stype VirtualityAttribute // DW_VIRTUALITY_
+	'none	= 0x00
+	'virtual	= 0x01
+	'pure_virtual	= 0x02
+end
+//[cf]
+//[of]:SourceLanguage
+stype	SourceLanguage // DW_LANG_
+	'C89	= 0x0001
+	'C	= 0x0002
+	'Ada83	= 0x0003
+	'C_plus_plus	= 0x0004
+	'Cobol74	= 0x0005
+	'Cobol85	= 0x0006
+	'Fortran77	= 0x0007
+	'Fortran90	= 0x0008
+	'Pascal83	= 0x0009
+	'Modula2	= 0x000A
+	'Java	= 0x000B
+	'C99	= 0x000C
+	'Ada95	= 0x000D
+	'Fortran95	= 0x000E
+	'PLI	= 0x000F
+	'ObjC	= 0x0010
+	'ObjC_plus_plus	= 0x0011
+	'UPC	= 0x0012
+	'D	= 0x0013
+	'Python	= 0x0014
+	'lo_user	= 0x8000
+	'Mips_Assembler	= 0x8001
+	'Copper	= 0xC0DE
+	'hi_user	= 0xFFFF
+end
+//[cf]
+//[of]:CaseSensitivity
+stype CaseSensitivity // DW_ID_
+	'case_sensitive	= 0x00
+	'up_case	= 0x01
+	'down_case	= 0x02
+	'case_insensitive	= 0x03
+end
+//[cf]
+//[of]:DarfCallingConvention
+stype DarfCallingConvention // DW_CC_
+	'normal	= 0x01
+	'program	= 0x02
+	'nocall	= 0x03
+	'lo_user	= 0x40
+	'hi_user	= 0xFF
+end
+//[cf]
+//[of]:InlineAttribute
+stype InlineAttribute // DW_INL_
+	'not_inlined	= 0x00
+	'inlined	= 0x01
+	'declared_not_inlined	= 0x02
+	'declared_inlined	= 0x03
+end
+//[cf]
+//[of]:ArrayDimensionOrdering
+stype ArrayDimensionOrdering // DW_ORD_
+	'row_major	= 0x00
+	'col_major	= 0x01
+end
+//[cf]
+//[of]:DiscriminantList
+stype DiscriminantList // DW_DSC_
+	'label = 0x00
+	'range = 0x01
+end
+//[cf]
+//[of]:LineNumberOps
+stype LineNumberOps : Byte // DW_LNS_
+	'extended_op	= 0x00
+	'copy	= 0x01
+	'advance_pc	= 0x02
+	'advance_line	= 0x03
+	'set_file	= 0x04
+	'set_column	= 0x05
+	'negate_stmt	= 0x06
+	'set_basic_block	= 0x07
+	'const_add_pc	= 0x08
+	'fixed_advance_pc	= 0x09
+	'set_prologue_end	= 0x0A
+	'set_epilogue_begin	= 0x0B
+	'set_isa	= 0x0C
+end
+//[cf]
+//[of]:LineNumberExtendedOps
+stype LineNumberExtendedOps : Byte // DW_LINE
+	'end_sequence	= 0x01
+	'set_address	= 0x02
+	'define_file	= 0x03
+	'set_discriminator	= 0x04
+	'lo_user	= 0x80
+	'hi_user	= 0xFF
+end
+//[cf]
+//[of]:MacinfoRecordType
+stype MacinfoRecordType // DW_MACINFO_
+	'define	= 0x01
+	'undef	= 0x02
+	'start_file	= 0x03
+	'end_file	= 0x04
+	'vendor_ext	= 0xFF
+end
+//[cf]
+//[of]:CallFrameInfo
+stype CallFrameInfo // DW_CFA_
+	'extended	= 0x00
+	'nop	= 0x00
+	'advance_loc	= 0x40
+	'offset	= 0x80
+	'restore	= 0xC0
+	'set_loc	= 0x01
+	'advance_loc1	= 0x02
+	'advance_loc2	= 0x03
+	'advance_loc4	= 0x04
+	'offset_extended	= 0x05
+	'restore_extended	= 0x06
+	'undefined	= 0x07
+	'same_value	= 0x08
+	'register	= 0x09
+	'remember_state	= 0x0A
+	'restore_state	= 0x0B
+	'def_cfa	= 0x0C
+	'def_cfa_register	= 0x0D
+	'def_cfa_offset	= 0x0E
+	'def_cfa_expression	= 0x0F
+	'expression	= 0x10
+	'offset_extended_sf	= 0x11
+	'def_cfa_sf	= 0x12
+	'def_cfa_offset_sf	= 0x13
+	'val_offset	= 0x14
+	'val_offset_sf	= 0x15
+	'val_expression	= 0x16
+	'MIPS_advance_loc8	= 0x1D
+	'GNU_window_save	= 0x2D
+	'GNU_args_size	= 0x2E
+	'lo_user	= 0x1C
+	'hi_user	= 0x3F
+end
+//[cf]
+//[of]:DwarfChildren
+stype DwarfChildren : Byte
+	'no	= 0
+	'yes	= 1
+end
+//[cf]
+
+.private
+import "std"

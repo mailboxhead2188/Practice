@@ -1,0 +1,33 @@
+struct DIR
+end
+
+struct DIRENT
+end
+
+struct FILE
+end
+
+.c
+.cdecl
+import function file_exists	(*[] Uint8) : Int32
+import function file_size	(*[] Uint8) : Int64
+import function file_last_modification	(*[] Uint8) : Uint32
+import function file_read_only	(*[] Uint8) : Int32
+import function file_is_directory	(*[] Uint8) : Int32
+import function dirent_name	(*DIRENT) : *[] Uint8
+import function dirent_is_directory	(*DIRENT) : Int32
+import function dir_open	(*[] Uint8) : *DIR
+import function dir_read	(*DIR) : *DIRENT
+import function dir_close	(*DIR)
+import function get_errno	: Int32
+
+import function getenv	(*[] Uint8) : *[] Uint8
+import function getcwd	(*[] Uint8, Size) : *[] Uint8
+import function mkdir	(*[] Uint8, Uint32) : Int32
+import function unlink	(*[] Uint8) : Int32
+
+import function fopen	(*[] Uint8, *[] Uint8) : *FILE
+import function fclose	(*FILE) : Int32
+import function fread	(*[] Uint8, Size, Size, *FILE) : Size
+import function fwrite	(*[] Uint8, Size, Size, *FILE) : Size
+import function ferror	(*FILE) : Int32

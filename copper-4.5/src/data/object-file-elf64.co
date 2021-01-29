@@ -1,0 +1,1185 @@
+//[of]:Constants
+const textSymbol	= ObjectSymbol : 1
+const dataSymbol	= ObjectSymbol : 2
+const bssSymbol	= ObjectSymbol : 3
+//[cf]
+//[of]:ObjectFile
+struct ObjectFile
+
+	// Private
+	var pool	: *MemoryPool	// The memory pool to store child elements -- ### still needed ?
+	var debug	: Bool	// The object file includes debug information
+	var bufferStart	: Bytes	// Buffer to write all sections in second pass
+	var bufferSize	: Size	// Size of the buffer
+			
+	// Sections
+	var null	: ELFNullSection	// The first null section
+	var text	: ELFContent	// The .text section
+	var data	: ELFContent	// The .data section
+	var bss	: ELFBss	// The .bss section
+	var reltext	: ELFRelocation	// The .rel.text section
+	var reldata	: ELFRelocation	// The .rel.data section
+	var shstrtab	: ELFStringTable	// The string table for section header
+	var strtab	: ELFStringTable	// The string table
+	var symtab	: ELFSymbolTable	// The symbol table
+	var debugInfo	: DebugInfo	// .debug_info
+	var reldebugInfo	: ELFRelocation	// .rel.debug_info
+	var debugline	: ELFContent	// .debug_line
+	var reldebugline	: ELFRelocation	// .rel.debug_line
+	var abbrev	: DebugAbbrev	// .debug_abbrev
+	var debugstr	: DebugString	// .debug_str
+	
+	var textSymbol	: ObjectSymbol	// Symbol pointing at the beginning of the .text section
+	var dataSymbol	: ObjectSymbol	// Symbol pointing at the beginning of the .data section
+	var bssSymbol	: ObjectSymbol	// Symbol pointing at the beginning of the .bss section
+	var debugLineSymbol	: ObjectSymbol	// Symbol pointing at the beginning of the .debug_line section
+	var debugStringSymbol	: ObjectSymbol	// Symbol pointing at the beginning of the .debug_str section
+	
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (pool: *MemoryPool, debug: Bool)
+
+	self pool	= pool
+	self debug	= debug
+	self bufferStart	= nil
+	self bufferSize	= 0
+
+	// index of first GLOBAL symbol in the table: 4 symbols (null, .text, .data, .bss)
+	var firstGlobal = Uinteger : 4
+	if debug
+		// Two more LOCAL symbol in debug mode (.debug_line, .debug_string)
+		firstGlobal += 2 
+	end
+	
+	self null	initialize (sndx_null)
+	self shstrtab	initialize (sndx_shstrtab)
+	self strtab	initialize (sndx_strtab)
+	self text	initialize (sndx_text, 'alloc | 'execInstr, self reltext)
+	self data	initialize (sndx_data, 'alloc | 'write, self reldata)
+	self reltext	initialize (sndx_rel_text, sndx_symtab, sndx_text)
+	self reldata	initialize (sndx_rel_text, sndx_symtab, sndx_data)
+	self bss	initialize (sndx_bss)
+	self symtab	initialize (sndx_symtab, self strtab, firstGlobal)
+
+	if self debug
+		self debugstr	initialize (sndx_debug_str)
+		self reldebugInfo	initialize (sndx_rel_debug_info, sndx_symtab, sndx_debug_info)
+		self debugInfo	initialize (sndx_debug_info, self reldebugInfo)
+		self reldebugline	initialize (sndx_rel_debug_line, sndx_symtab, sndx_debug_line)
+		self debugline	initialize (sndx_debug_line, 0, self reldebugline)
+		self abbrev	initialize (sndx_debug_abbrev)
+	end
+	
+end
+//[cf]
+//[of]:release
+function release
+
+	if self bufferStart notNil
+		freeBytes (self bufferStart, self bufferSize)
+	end
+	self shstrtab release
+	self strtab release
+	self symtab release
+
+end
+//[cf]
+//[of]:startPass
+//[c]Must be executed at the beginning of the first pass and second pass.
+//[c]
+function startPass
+
+	self shstrtab startPass
+	self strtab startPass
+	self symtab startPass
+
+	self symtab addNull
+	self textSymbol	= self symtab addSection (sndx_text)
+	self dataSymbol	= self symtab addSection (sndx_data)
+	self bssSymbol	= self symtab addSection (sndx_bss)
+
+	// Give a name to sections
+	var s = self shstrtab
+	s	setName (s, ".shstrtab")
+	self strtab	setName (s, ".strtab")
+	self text	setName (s, ".text")
+	self reltext	setName (s, ".rel.text")
+	self data	setName (s, ".data")
+	self reldata	setName (s, ".rel.data")
+	self bss	setName (s, ".bss")
+	self symtab	setName (s, ".symtab")
+
+	if self debug
+		self debugInfo startPass
+		self abbrev startPass
+		
+		self debugLineSymbol	= self symtab addSection (sndx_debug_line)
+		self debugStringSymbol	= self symtab addSection (sndx_debug_str)
+		
+		self debugstr	setName (s, ".debug_str")
+		self debugInfo	setName (s, ".debug_info")
+		self reldebugInfo	setName (s, ".rel.debug_info")
+		self debugline	setName (s, ".debug_line")
+		self reldebugline	setName (s, ".rel.debug_line")
+		self abbrev	setName (s, ".debug_abbrev")
+	end
+
+end
+//[cf]
+//[of]:endPass
+function endPass
+
+	if self debug
+		self debugInfo endPass
+	end
+
+end
+//[cf]
+//[of]:endPass1
+function endPass1
+
+	// Compute size and offset of section in the file
+	var headerSize = ObjectOffset : 0
+	headerSize += ObjectOffset fromSize (Elf64_Ehdr size)
+	headerSize += self sectionCount cast (ObjectOffset) * ObjectOffset fromSize (Elf64_Shdr size)
+	
+	var offset = ObjectOffset : 0
+	offset = self text	finalize (offset, headerSize)
+	offset = self reltext	finalize (offset, headerSize)
+	offset = self data	finalize (offset, headerSize)
+	offset = self reldata	finalize (offset, headerSize)
+	offset = self bss	finalize (offset, headerSize)
+	offset = self shstrtab	finalize (offset, headerSize)
+	offset = self symtab	finalize (offset, headerSize)
+	offset = self strtab	finalize (offset, headerSize)
+	if self debug
+		offset = self debugInfo	finalize (offset, headerSize)
+		offset = self reldebugInfo	finalize (offset, headerSize)
+		offset = self debugline	finalize (offset, headerSize)
+		offset = self reldebugline	finalize (offset, headerSize)
+		offset = self abbrev	finalize (offset, headerSize)
+		offset = self debugstr	finalize (offset, headerSize)
+	end
+	
+	// Allocate memory for the buffer
+	var size = offset toSize
+	var p = allocateBytes (size)
+	self bufferSize = size
+	self bufferStart = p
+
+	// Assign a pointer to each virtual buffer
+	p = self text	pass2 (p)
+	p = self reltext	pass2 (p)
+	p = self data	pass2 (p)
+	p = self reldata	pass2 (p)
+	p = self bss	pass2 (p)
+	p = self shstrtab	pass2 (p)
+	p = self symtab	pass2 (p)
+	p = self strtab	pass2 (p)
+	if self debug
+		p = self debugInfo	pass2 (p)
+		p = self reldebugInfo	pass2 (p)
+		p = self debugline	pass2 (p)
+		p = self reldebugline	pass2 (p)
+		p = self abbrev	pass2 (p)
+		p = self debugstr	pass2 (p)
+	end
+	
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:textSection
+function textSection
+	return self text
+end
+//[cf]
+//[of]:dataSection
+function dataSection
+	return self data
+end
+//[cf]
+//[of]:bssSection
+function bssSection
+	return self bss
+end
+//[cf]
+//[cf]
+//[of]:	creating
+//[of]:createAutoSymbol
+//[c]Creates an automatic symbol on the current location of the given section.
+//[c]A unique name is generated for this symbol.
+//[c]
+//[c]PARAMETERS
+//[c]	section	--	The section of the symbol.
+//[c]	size	--	The size of the data. The size may not be known in pass 1.
+//[c]
+//[c]RETURN VALUES
+//[c]	The newly created symbol.
+//[c]
+function createAutoSymbol (section: *ObjectContent, size: ObjectOffset)
+	var name = self symtab generateUniqueName ("S")
+	var off = self strtab add (name)
+	var address = section buffer pos
+ 	return self symtab addStatic (off, section, address, size)
+end
+//[cf]
+//[of]:createFunctionSymbol
+//[c]Creates a new symbol for a function.
+//[c]
+function createFunctionSymbol (name: String8, section: *ObjectContent, address: ObjectOffset, size: ObjectOffset)
+	var off = self strtab add (name)
+	return self symtab addFunction (off, section, address, size)
+end
+//[cf]
+//[of]:createExternSymbol
+//[c]Creates a new function symbol
+//[c]
+//[c]ARGUMENTS
+//[c]	f -- the extern function
+//[c]
+//[c]RETURN VALUES
+//[c]	The symbol
+//[c]
+//[c]REMARKS
+//[c]	The symbol is added to the symbol table.
+//[c]
+function createExternSymbol (name: String8)
+	var off = self strtab add (name)
+ 	return self symtab addExtern (off)
+end
+//[cf]
+//[cf]
+//[of]:	dumping
+//[of]:dump
+function dump (filename: String)
+
+	var file : *File
+	var err : *Error	
+	file, err = File openWrite (filename)
+	if err notNil
+		return err
+	end
+
+	err = err | self dumpHeader (file)
+	err = err | self dumpSectionHeader (file)
+	var written, err2 = file write (self bufferStart, self bufferSize)
+	err = err | err2
+	return err | file close
+
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const sndx_null	= Uinteger : 0
+static const sndx_text	= Uinteger : 1
+static const sndx_rel_text	= Uinteger : 2
+static const sndx_data	= Uinteger : 3
+static const sndx_rel_data	= Uinteger : 4
+static const sndx_bss	= Uinteger : 5
+static const sndx_shstrtab	= Uinteger : 6
+static const sndx_symtab	= Uinteger : 7
+static const sndx_strtab	= Uinteger : 8
+	
+static const sndx_debug_info	= Uinteger : 9
+static const sndx_rel_debug_info	= Uinteger : 10
+static const sndx_debug_line	= Uinteger : 11
+static const sndx_rel_debug_line	= Uinteger : 12
+static const sndx_debug_abbrev	= Uinteger : 13
+static const sndx_debug_str	= Uinteger : 14
+
+static const sectionCountWithoutDebug	= Uinteger : 9
+static const sectionCountWithDebug	= Uinteger : 15
+//[cf]
+//[of]:dumpHeader
+function dumpHeader (file)
+
+	var h	: Elf64_Ehdr
+	var ident	= * [16] Byte : {0x7F, 0x45, 0x4C, 0x46, 2, 1, 1, ELFOSABI_LINUX, 0, 0, 0, 0, 0, 0, 0, 0}
+	
+	copyBytes (h ident, ident, EI_NIDENT)
+	h type	= ET_REL	// File type: an object file
+	h machine	= EM_X86_64	// Machine: x86-64
+	h version	= EV_CURRENT	// Version: must be "current"
+	h entry	= 0	// 
+	h phoff	= 0	// Position of the program header
+	h shoff	= Elf64_Ehdr size cast (Uint64)	// Position of the section header (immediately after the header)
+	h flags	= 0	// Flags
+	h ehsize	= Elf64_Ehdr size cast (Uint16)	// Size of the header
+	h phentsize	= 0	// Size of an item in the program header
+	h phnum	= 0	// Number of program header
+	h shentsize	= Elf64_Shdr size cast (Uint16)	// Size of an item in the section header
+	h shnum	= self sectionCount cast (Uint16)	// Number of sections in the section header
+	h shstrndx	= sndx_shstrtab cast (Uint16)	// The string table for the section header is the first section (after null)
+	
+	var written, err = file write (h cast (Bytes), Elf64_Ehdr size)
+	return err
+
+end
+//[cf]
+//[of]:dumpSectionHeader
+function dumpSectionHeader (file: *File)
+
+	var err = self null	writeHeaderTo (file)
+	err = err | self text	writeHeaderTo (file)
+	err = err | self reltext	writeHeaderTo (file)
+	err = err | self data	writeHeaderTo (file)
+	err = err | self reldata	writeHeaderTo (file)
+	err = err | self bss	writeHeaderTo (file)
+	err = err | self shstrtab	writeHeaderTo (file)
+	err = err | self symtab	writeHeaderTo (file)
+	err = err | self strtab	writeHeaderTo (file)
+	
+	if self debug
+		err = err | self debugInfo	writeHeaderTo (file)
+		err = err | self reldebugInfo	writeHeaderTo (file)
+		err = err | self debugline	writeHeaderTo (file)
+		err = err | self reldebugline	writeHeaderTo (file)
+		err = err | self abbrev	writeHeaderTo (file)
+		err = err | self debugstr	writeHeaderTo (file)
+	end
+
+	return err
+
+end
+//[cf]
+//[of]:sectionCount
+function sectionCount
+	return self debug cond sectionCountWithDebug else sectionCountWithoutDebug
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+//[of]:ObjectContent
+const ObjectContent = ELFContent
+//[cf]
+//[of]:ObjectSymbol
+stype ObjectSymbol : Uinteger
+	'undefined = 0 - 1
+end
+//[cf]
+//[of]:ObjectOffset
+//[c]Count bytes in an object file.
+//[c]
+//[c]* It can count the number of bytes,
+//[c]* it can count the bytes between a location in an object (e.g. a function) and the beginning of the object,
+//[c]* it can count the total size of the object file
+//[c]* ...
+//[c]* it is always positive.
+//[c]
+//[c]It is a 64 unsigned integer to match the type of most attributes in the 
+//[c]64 bit ELF file format.
+//[c]
+stype ObjectOffset : Uint64
+
+	// Undefined offset (e.g. in labels)
+	'undefined	= 0 - 1
+	
+	// Symbols for alignment
+	'byte	= 1
+	'word	= 2
+	'dword	= 4
+	'qword	= 8
+
+	meta function fromSize (s: Size)
+		return s cast (ObjectOffset)
+	end
+
+	function toDword
+		return self cast (Uint32)
+	end
+
+	function toQword
+		return self cast (Uint64)
+	end
+
+	function toAddress
+		return self cast (Uint64)
+	end
+
+	function toSize
+		return self cast (Size)
+	end
+
+	function toInt64
+		return self cast (Int64)
+	end
+	
+	function toInteger
+		return self cast (Integer)
+	end
+		
+end
+//[cf]
+//[of]:Debug
+//[of]:Abbrev
+stype Abbrev : Byte
+	'compileUnit	= 1
+	'subprogram
+	'parameter
+	'baseType
+	'pointerType
+	'arrayType
+	'structureType
+	'member
+	'subroutineType
+	'parameterType
+	'variable
+end
+//[cf]
+//[of]:DebugInfo
+struct DebugInfo : ELFContent
+
+	var strings	: *DebugString	// The string section
+	var length	: Uint32	// The size of the section saved at the beginning
+	
+//[of]:	initialize
+function initialize (index: Uinteger, relocations: *ELFRelocation)
+
+	self super initialize (index, 0, relocations)
+	self length = 0
+
+end
+//[cf]
+//[of]:	startPass
+function startPass
+
+	var b = self buffer
+	b writeDword (self length)	// Size of section
+	b writeWord (4)	// Version
+	b writeDword (0)	// Offset in abbrev section
+	b writeByte (8)	// Size of pointers 
+
+end
+//[cf]
+//[of]:	endPass
+function endPass
+
+	// Terminate with a 0 abbrev
+	self buffer writeByte (Abbrev : 0)
+
+	// Save the size of the section (not counting the size attribute)
+	self length = self buffer pos toDword - 4
+
+end
+//[cf]
+
+end
+//[cf]
+//[of]:DebugAbbrev
+struct DebugAbbrev : ELFSection
+
+	var size	: ObjectOffset	// Size of the section
+
+//[of]:	initialize
+function initialize (index: Uinteger)
+
+	self super initialize (index)
+	var sh = self header
+	sh type	= SHT_PROGBITS
+	sh addralign	= 1
+
+end
+//[cf]
+//[of]:	startPass
+function startPass
+
+	var b = self buffer
+	var p = abbrevs
+	while p [] notNil
+		var a = p []
+		b writeByte (a abbrev)
+		b writeByte (a tag)
+		b writeByte (a hasChildren)
+		var at = a attributes
+		repeat
+			var name = at [] name
+			b writeByte (name)
+			b writeByte (at [] form)
+			if name == 0
+				break
+			end
+			at ++
+		end
+		p ++
+	end
+	b writeByte (0)
+
+end
+//[cf]
+
+	static struct Descriptor
+		var abbrev	: Abbrev
+		var tag	: DwarfTag
+		var hasChildren	: DwarfChildren
+		var attributes	: [] Attribute
+		
+		function size
+			var size = ObjectOffset : 5 // abbrev, tag, children and terminator (0, 0)
+			var p = self attributes
+			while p [] name <> 0
+				size += 2
+				p ++
+			end
+			return size
+		end
+			
+	end
+	
+	static struct Attribute
+		var name	: DwarfAttribute
+		var form	: DwarfForm
+	end
+		
+	static const abbrevs = *[] *Descriptor : {
+		{ 'compileUnit, 'compile_unit, 'yes,
+			'producer,	'strp,
+			'language,	'data2, 
+			'low_pc,	'addr,
+			'high_pc,	'data8,
+			'stmt_list,	'sec_offset,
+			0,	0 },
+		{ 'subprogram, 'subprogram, 'yes,
+			'name,	'string,
+			'low_pc,	'addr,
+			'high_pc,	'data8,
+			'frame_base,	'exprloc,
+			'sibling,	'ref4, 
+			0,	0 },
+		{ 'parameter, 'formal_parameter, 'no,
+			'name,	'string,
+			'type,	'ref4,
+			'location,	'exprloc,
+			0,	0 },
+		{ 'baseType, 'base_type, 'no,
+			'byte_size,	'data1,
+			'encoding,	'data1,
+			'name,	'string,
+			0,	0 },
+		{ 'pointerType, 'pointer_type, 'no,
+			'byte_size,	'data1,
+			'type,	'ref4,
+			0,	0 },
+		{ 'arrayType, 'array_type, 'no,
+			'byte_size,	'data4,
+			'type,	'ref4,
+			0,	0 },
+		{ 'structureType, 'structure_type, 'yes,
+			'name,	'string,
+			'byte_size,	'data4,
+			'sibling,	'ref4, 
+			0,	0 },
+		{ 'member, 'member, 'no,
+			'name,	'string,
+			'type,	'ref4,
+			'data_member_location, 'data4,
+			0,	0 },
+		{ 'subroutineType, 'subroutine_type, 'yes,
+			'sibling,	'ref4, 
+			0,	0 },
+		{ 'parameterType, 'formal_parameter, 'no,
+			'type,	'ref4,
+			0,	0 },
+		{ 'variable, 'variable, 'no,
+			'name,	'string,
+			'type,	'ref4,
+			'location,	'exprloc,
+			0,	0 },
+		nil}
+
+end
+//[cf]
+//[of]:DebugString
+struct DebugString : ELFSection
+
+//[of]:	initialize
+function initialize (index: Uinteger)
+
+	self super initialize (index)
+
+	var sh = self header
+	sh type	= SHT_PROGBITS
+	sh addralign	= 1
+
+end
+//[cf]
+//[of]:	add
+function add (s: String8)
+	var offset = self buffer pos
+	self buffer write (s, ObjectOffset fromSize ((s size + 1) toByteSize))
+	return offset
+end
+//[cf]
+
+end
+//[cf]
+//[cf]
+//[of]:VirtualBuffer
+//[c]A Virtual buffer is used for 2-pass generation:
+//[c]* Pass 1 does not write, it just increase the size
+//[c]* Pass 2 writes data
+//[c]
+struct VirtualBuffer
+
+	var pos	: ObjectOffset	// Current position
+	var ptr	: Bytes	// Pointer used in pass 2
+
+	var writeByteFunction	: & (*VirtualBuffer, Uint8)
+	var writeWordFunction	: & (*VirtualBuffer, Uint16)
+	var writeDwordFunction	: & (*VirtualBuffer, Uint32)
+	var writeQwordFunction	: & (*VirtualBuffer, Uint64)
+	var writeFunction	: & (*VirtualBuffer, Pointer, ObjectOffset)
+	
+//[of]:	startPass1
+function startPass1
+	self pos = 0
+	self ptr = nil
+	self writeByteFunction	= ref (*VirtualBuffer) countByte (Uint8)
+	self writeWordFunction	= ref (*VirtualBuffer) countWord (Uint16)
+	self writeDwordFunction	= ref (*VirtualBuffer) countDword (Uint32)
+	self writeQwordFunction	= ref (*VirtualBuffer) countQword (Uint64)
+	self writeFunction	= ref (*VirtualBuffer) count (Pointer, ObjectOffset)
+end
+//[cf]
+//[of]:	startPass2
+function startPass2 (p: Bytes)
+	var next = p + self pos
+	self pos = 0
+	self ptr = p
+	self writeByteFunction	= ref (*VirtualBuffer) putByte (Uint8)
+	self writeWordFunction	= ref (*VirtualBuffer) putWord (Uint16)
+	self writeDwordFunction	= ref (*VirtualBuffer) putDword (Uint32)
+	self writeQwordFunction	= ref (*VirtualBuffer) putQword (Uint64)
+	self writeFunction	= ref (*VirtualBuffer) put (Pointer, ObjectOffset)
+	return next
+end
+//[cf]
+//[of]:	writing
+//[of]:align
+function align (align: ObjectOffset, pad: Byte)
+	var offset = self pos
+	var mask	= align - 1
+	offset += mask
+	offset &= not mask
+	var n = offset - self pos
+	while n > 0
+		self writeByte (pad)
+		n --
+	end
+end
+//[cf]
+//[of]:writeLEB32
+function writeLEB32 (value: Uint32)
+	var v = value
+	repeat
+		var byte = v cast (Byte) & 0x7F
+		v >>= 7
+		if v <> 0
+			self writeByte (byte | 0x80)
+		else
+			self writeByte (byte)
+			break
+		end
+	end
+end
+//[cf]
+//[of]:writeSLEB32
+function writeSLEB32 (value: Int32)
+	var v = value
+	repeat
+		var byte = v cast (Byte) & 0x7F
+		v >>= 7
+		var sign = Int32 : ((byte & 0x40) == 0 cond 0 else -1)
+		if v == sign
+			self writeByte (byte)
+			break
+		else
+			self writeByte (byte | 0x80)
+		end
+	end
+end
+//[cf]
+//[of]:writeString
+// Unix: the string is already encoded with 8-bit characters
+function [unix] writeString (str: String)
+	self write (str, ObjectOffset fromSize (str size toByteSize) + 1)
+end
+
+// Windows: for cross compilation: assume ASCII only
+function [windows] writeString (str: String)
+	str eachChar do c
+		self writeByte (c : Byte)
+	end
+	self writeByte (0)
+end
+//[cf]
+//[of]:writeString8
+function writeString8 (str: String8)
+	self write (str, ObjectOffset fromSize (str size toByteSize) + 1)
+end
+//[cf]
+
+//[of]:writeByte
+function writeByte (v: Uint8)
+	self writeByteFunction call (self, v)
+end
+//[cf]
+//[of]:writeWord
+function writeWord (v: Uint16)
+	self writeWordFunction call (self, v)
+end
+//[cf]
+//[of]:writeDword
+function writeDword (v: Uint32)
+	self writeDwordFunction call (self, v)
+end
+//[cf]
+//[of]:writeQword
+function writeQword (v: Uint64)
+	self writeQwordFunction call (self, v)
+end
+//[cf]
+//[of]:write
+function write (v: Pointer, n: ObjectOffset)
+	self writeFunction call (self, v, n)
+end
+//[cf]
+//[cf]
+//[of]:	private
+function countByte (v: Uint8)
+	self pos += 1
+end
+function countWord (v: Uint16)
+	self pos += 2
+end
+function countDword (v: Uint32)
+	self pos += 4
+end
+function countQword (v: Uint64)
+	self pos += 8
+end
+function count (v: Pointer, n: ObjectOffset)
+	self pos += n
+end
+
+function putByte (v: Uint8)
+	(self ptr cast (*Uint8)) [] = v
+	self ptr += 1
+	self pos += 1
+end
+function putWord (v: Uint16)
+	(self ptr cast (*Uint16)) [] = v
+	self ptr += 2
+	self pos += 2
+end
+function putDword (v: Uint32)
+	(self ptr cast (*Uint32)) [] = v
+	self ptr += 4
+	self pos += 4
+end
+function putQword (v: Uint64)
+	(self ptr cast (*Uint64)) [] = v
+	self ptr += 8
+	self pos += 8
+end
+function put (v: Pointer, n: ObjectOffset)
+	copyBytes (self ptr, v, n cast (Size))
+	self ptr += n
+	self pos += n
+end
+//[cf]
+
+end
+//[cf]
+
+.private
+//[of]:ELF
+//[of]:ELFSection
+struct ELFSection
+
+	var header	: Elf64_Shdr
+	var index	: Uinteger
+	var padding	: ObjectOffset	// Number of bytes to fill to reach required alignment
+	var buffer	: VirtualBuffer	// The binary symbol table
+
+//[of]:	initialize
+function initialize (index: Uinteger)
+
+	self index	= index
+	self padding	= 0
+	self buffer startPass1
+
+	var sh = self header
+	sh name	= 0
+	sh type	= SHT_NULL
+	sh flags	= 0
+	sh addr	= 0
+	sh offset	= 0
+	sh size	= 0
+	sh link	= SHN_UNDEF cast (Uint32)
+	sh info	= 0
+	sh addralign	= 0
+	sh entsize	= 0
+
+end
+//[cf]
+//[of]:	finalize
+function finalize (o: ObjectOffset, headerSize: ObjectOffset)
+
+	// Align offset with addralign constraint
+	var mask = self header addralign cast (ObjectOffset) - 1
+	var offset = o
+	offset += mask
+	offset &= not mask
+
+	// Save the number of bytes needed to align
+	self padding = offset - o
+
+	var size = self buffer pos
+	self header offset	= offset + headerSize
+	self header size	= size
+	
+	return offset + size
+
+end
+//[cf]
+//[of]:	pass2
+function pass2 (start: Bytes)
+
+	// Fill the bytes needed to align the section
+	var p = start
+	var limit = p + self padding
+	while p <> limit
+		p [] = 0
+		p ++
+	end
+	
+	// Save the pointer to the beginning of the section, switch to real
+	// write and return the pointer to the end of the section.
+	return self buffer startPass2 (p)
+
+end
+//[cf]
+//[of]:	setName
+function setName (strings: *ELFStringTable, name: String8)
+	self header name = strings add (name) toDword
+end
+//[cf]
+//[of]:	writeHeaderTo
+function writeHeaderTo (file: *File)
+	var written, err = file write (self header cast (Bytes), Elf64_Shdr size)
+	return err
+end
+//[cf]
+
+end
+//[cf]
+//[of]:ELFNullSection
+struct ELFNullSection : ELFSection
+
+	function initialize (index: Uinteger)
+		self super initialize (index)
+	end
+
+end
+//[cf]
+//[of]:ELFSymbolTable
+struct ELFSymbolTable : ELFSection
+
+	// Private
+	var index	: ObjectSymbol	// Number of the next symbol
+	var nameBuffer	: MemoryBuffer	// Buffer to generate the name of symbols
+	var nameIndex	: Uinteger	// Suffix to generate a unique symbol
+
+//[of]:	initialize
+function initialize (index: Uinteger, strings: *ELFStringTable, firstGlobal: Uinteger)
+
+	self super initialize (index)
+	self nameBuffer	initialize
+
+	var sh = self header
+	sh type	= SHT_SYMTAB
+	sh link	= strings index asUnsigned
+	sh info	= firstGlobal
+	sh addralign	= 8
+	sh entsize	= Elf64_Sym size cast (Uint64)
+
+end
+//[cf]
+//[of]:	release
+function release
+	self nameBuffer release
+end
+//[cf]
+//[of]:	startPass
+function startPass
+	self index = 0
+	self nameIndex	= 1
+end
+//[cf]
+
+//[of]:	add
+function add (symbol: *Elf64_Sym)
+	self buffer write (symbol, ObjectOffset fromSize (Elf64_Sym size))
+	var index = self index
+	self index ++
+	return index
+end
+//[cf]
+//[of]:	addNull
+function addNull
+
+	var s : Elf64_Sym
+	s name	= 0
+	s value	= 0
+	s size	= 0
+	s info	= 0
+	s other	= 0
+	s shndx	= SHN_UNDEF
+	return self add (s)
+
+end
+//[cf]
+//[of]:	addExtern
+function addExtern (name: ObjectOffset)
+
+	var s : Elf64_Sym
+	s name	= name toDword
+	s value	= 0
+	s size	= 0
+	s info	= ELF64_ST_INFO (STB_GLOBAL, STT_FUNC)
+	s other	= 0
+	s shndx	= SHN_UNDEF
+	return self add (s)
+
+end
+//[cf]
+//[of]:	addFunction
+function addFunction (name: ObjectOffset, section: *ELFSection, value: ObjectOffset, size: ObjectOffset)
+
+	var s : Elf64_Sym
+	s name	= name toDword
+	s value	= value toAddress
+	s size	= size toQword
+	s info	= ELF64_ST_INFO (STB_GLOBAL, STT_FUNC)
+	s other	= 0
+	s shndx	= section index cast (Uint16)
+	return self add (s)
+
+end
+//[cf]
+//[of]:	addSection
+function addSection (ndx: Uinteger)
+
+	var s : Elf64_Sym
+	s name	= 0
+	s value	= 0
+	s size	= 0
+	s info	= ELF64_ST_INFO (STB_LOCAL, STT_SECTION)
+	s other	= 0
+	s shndx	= ndx cast (Uint16)
+	return self add (s)
+
+end
+//[cf]
+//[of]:	addStatic
+function addStatic (name: ObjectOffset, section: *ELFSection, value: ObjectOffset, size: ObjectOffset)
+
+	var s : Elf64_Sym
+	s name	= name toDword
+	s value	= value toAddress
+	s size	= size toQword
+	s info	= ELF64_ST_INFO (STB_GLOBAL, STT_OBJECT)
+	s other	= 0
+	s shndx	= section index cast (Uint16)
+	return self add (s)
+
+end
+//[cf]
+
+//[of]:	generateUniqueName
+//[c]Generates a unique name for the symbol table based on the given string
+//[c]
+function generateUniqueName (s: String8)
+
+	var nameBuffer = self nameBuffer
+	nameBuffer removeAll
+	nameBuffer addByte ($_)
+	nameBuffer addBlock (s, s size toByteSize)
+	addUnsignedToBuffer (nameBuffer, self nameIndex)
+	nameBuffer addByte (0)
+
+	self nameIndex ++
+
+	return nameBuffer base downcast (String8)
+
+end
+//[cf]
+	
+end
+//[cf]
+//[of]:ELFStringTable
+struct ELFStringTable : ELFSection
+
+//[of]:	initialize
+function initialize (index: Uinteger)
+
+	self super initialize (index)
+
+	var sh = self header
+	sh type	= SHT_STRTAB
+	sh addralign	= 1
+
+end
+//[cf]
+//[of]:	release
+function release
+	self buffer release
+end
+//[cf]
+//[of]:	startPass
+function startPass
+	self buffer writeByte (0)
+end
+//[cf]
+//[of]:	add
+function add (s: String8)
+	var offset = self buffer pos
+	self buffer write (s, ObjectOffset fromSize ((s size + 1) toByteSize))
+	return offset
+end
+//[cf]
+
+end
+//[cf]
+//[of]:ELFRelocation
+struct ELFRelocation : ELFSection
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (index: Uinteger, symtab: Uinteger, section: Uinteger)
+
+	self super initialize (index)
+
+	var sh = self header
+	sh type	= SHT_REL
+	sh link	= symtab
+	sh info	= section
+	sh addralign	= 8
+	sh entsize	= Elf64_Rel size cast (Uint64)
+
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+function add (offset: ObjectOffset, type: Byte)
+	var r : Elf64_Rel
+	r set (offset toAddress64, 0, type)
+	self buffer write (r, ObjectOffset fromSize (Elf64_Rel size))
+end
+//[cf]
+//[of]:addSymbol
+function addSymbol (offset: ObjectOffset, symbol: ObjectSymbol, type: Byte)
+	var r : Elf64_Rel
+	r set (offset toAddress, symbol, type)
+	self buffer write (r, ObjectOffset fromSize (Elf64_Rel size))
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+//[of]:ELFContent
+struct ELFContent : ELFSection
+
+	// Private
+	var relocations	: *ELFRelocation	// The associated relocation section
+
+//[of]:	initialize - release
+//[of]:initialize
+//[c]Initializes a data section
+//[c]
+//[c]ARGUMENTS
+//[c]	index	-- the index of the section in the section header
+//[c]	flags	-- the flags of the section header
+//[c]	relocations	-- the associated relocation section
+//[c]
+function initialize (	index	: Uinteger, 
+	flags	: ShdrFlags64, 
+	relocations	: *ELFRelocation)
+
+	self super initialize (index)
+	self relocations	= relocations
+
+	var sh = self header
+	sh type	= SHT_PROGBITS
+	sh flags	= flags
+	sh addralign	= 8
+
+end
+//[cf]
+//[cf]
+//[of]:	writing
+//[of]:writeReference32
+//[c]Writes a global reference
+//[c]
+function writeReference32 (symbol: ObjectSymbol, offset: Integer)
+	self relocations addSymbol (self buffer pos, symbol, R_X86_64_32)
+	self buffer writeDword (offset asUnsigned)
+end
+//[cf]
+//[of]:writeReference64
+//[c]Writes a global reference
+//[c]
+function writeReference64 (symbol: ObjectSymbol, offset: Int64)
+	self relocations addSymbol (self buffer pos, symbol, R_X86_64_64)
+	self buffer writeQword (offset asUnsigned)
+end
+
+//[cf]
+//[of]:writeRelativeReference
+//[c]Writes a relative reference (for function calls)
+//[c]
+function writeRelativeReference (symbol: ObjectSymbol)
+	self relocations addSymbol (self buffer pos, symbol, R_X86_64_PC32)
+	self buffer writeDword (0 - 4)
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+//[of]:ELFBss
+struct ELFBss : ELFSection
+
+//[of]:	initialize
+//[c]Initializes a bss section
+//[c]
+//[c]ARGUMENTS
+//[c]	index	-- the index of the section in the section header
+//[c]
+function initialize (index: Uinteger)
+
+	self super initialize (index)
+	
+	var sh = self header
+	sh type	= SHT_NOBITS
+	sh flags	= 'alloc | 'write
+	sh addralign	= 8
+
+end
+//[cf]
+
+end
+//[cf]
+//[cf]
+
+import "elf/elf"
+import "elf/dwarf"
+import "data/program"
+import "commons"
+import "std"

@@ -1,0 +1,13 @@
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld.deps.json
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld.runtimeconfig.json
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld.runtimeconfig.dev.json
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld.dll
+/home/mcortez/Practice/CSharp/HelloWorld/bin/Debug/netcoreapp3.1/HelloWorld.pdb
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.csprojAssemblyReference.cache
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.AssemblyInfoInputs.cache
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.AssemblyInfo.cs
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.csproj.CoreCompileInputs.cache
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.dll
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.pdb
+/home/mcortez/Practice/CSharp/HelloWorld/obj/Debug/netcoreapp3.1/HelloWorld.genruntimeconfig.cache

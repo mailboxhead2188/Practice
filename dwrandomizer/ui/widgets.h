@@ -78,6 +78,7 @@ public:
     FileEntry(QWidget *parent = 0);
 private slots:
     void handleButton();
+    virtual void handleEdit(QString text);
 };
 
 class DirEntry : public ButtonEntry {

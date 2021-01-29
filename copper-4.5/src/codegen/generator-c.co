@@ -1,0 +1,2437 @@
+//[of]:CodeGenerator
+struct CodeGenerator
+
+	var program	: * Program	// The program to be generated
+	var pool	: * MemoryPool	// We still need to allocate stuffs
+	var cBuffer	: StringBuffer	// The output buffer
+	var nameBuffer	: StringBuffer	// The string buffer to generate C names
+	var indentBuffer	: StringBuffer	// The indentation before each line inside a block
+	var cblock	: *CBlock	// The current block
+	var out	: *StringBuffer	// The current output buffer
+	var globalIndex	: Integer	// The index for global unique C names
+	var localIndex	: Integer	// The index for local C names
+	var currentFunction	: *Function	// The function being processed
+	var structures	: Vector (*StructureType)	// The list of structures ordered by dependencies
+	var reservedIds	: IdentitySet (Identifier)	// The list of reserved keywords
+	var unwindItem	: *UnwindItem	// The top of the stacked unwind-items
+
+	static const maxValues	= Size : 256
+
+//[of]:	initialize
+function initialize (program: *Program, debug: Bool, dump: Bool)
+
+	self program	= program
+	self pool	= program pool
+	self cBuffer	initializeWithSize (1024*1024)
+	self nameBuffer	initialize
+	self cblock	= nil
+	self indentBuffer	initialize
+	self globalIndex	= 1
+	self structures	initialize
+	self reservedIds	initialize
+
+	// The list of C reserved keywords.
+	// Keywords that are also Copper keywords are not included as they
+	// can not be identifiers
+	var p = *[] String8 : {
+		"auto",
+		"char",
+		"continue",
+		"default",
+		"double",
+		"extern",
+		"float",
+		"for",
+		"goto",
+		"inline",
+		"int",
+		"long",
+		"register",
+		"short",
+		"signed",
+		"sizeof",
+		"static",
+		"typedef",
+		"union",
+		"unsigned",
+		"void",
+		"volatile",
+		"while",
+		"stdcall",
+		"cdecl",
+		nil}
+	
+	while p [] notNil
+		self reservedIds add (program identifiers [ p[] ])
+		p ++
+	end
+
+end
+//[cf]
+//[of]:	release
+function release
+
+	self structures release
+	self indentBuffer release
+	self nameBuffer release
+	self cBuffer release
+
+end
+//[cf]
+//[of]:	generate
+function generate (outFilename: String)
+
+	var program	= self program
+	var modules = program modules
+	
+	self out = self cBuffer
+
+	self out << String : "#include <stddef.h>\n\n"
+	self out << String : "#define CDECL // __cdecl\n"
+	self out << String : "#define STDCALL // __stdcall\n\n"
+	self out << String : "/* Declare structures, functions, variables and constants */\n"
+	self preDeclareStructures
+	self defineStructures
+	self declareFunctions
+	self declareExternFunctions
+	self declareGlobalVariables
+	self declareStructureConstants
+	self declareArrayConstants
+
+	self defineString8Constants
+	self defineString16Constants
+	self defineStructureConstants
+	self defineArrayConstants
+	self defineGlobalVariables
+	self defineFunctions
+	
+	// Converts the string buffer to an ASCII buffer
+	var n = self cBuffer size
+	var buf = Char8 allocateArray (n)
+	var q = buf
+	var p = self cBuffer base
+	var limit = p + n
+	while p <> limit
+		q [] = p [] cast (Char8)
+		p  ++
+		q ++
+	end
+
+	// Saves the file	
+	var f, err = File openWrite (outFilename)
+	if err notNil
+		return err
+	end
+		
+	var written, err2 = f write (buf, n cast (Size))
+	err = err | err2
+	err = err | f close
+	Char8 freeArray (buf, n)
+	return err
+
+end
+
+//[of]:preDeclareStructures
+function preDeclareStructures
+
+	// Structures
+	// Note: all structures are declared (some structures are unused but are
+	// member of another structure as pointer, so unused).
+	// First create the list of structures ordered by dependencies, and 
+	// assign a name to the structure and its attributes.
+	self program structures each do s
+		self scanStructure (s)
+	end
+	self program structures each do s
+		var name = s cname
+		self out << String : "typedef struct " << name << CodeUnit : 'space << name << String : ";\n"
+	end
+
+end
+
+//[of]:scanStructure
+function scanStructure (s: *StructureType) :
+
+	if s generator notNil
+		return
+	end
+	
+	var name = self getGlobal (s name string)
+	s generator = name
+	if not s used
+		return
+	end
+	
+	if s parentStructure notNil
+		self scanStructure (s parentStructure)
+	end
+	
+	s eachAttribute do a
+		a generator = self getIdentifier (a name)
+		var type = a storageType
+		while type isArray
+			type = type asArray cellType
+		end
+		if type isStructure
+			self scanStructure (type asStructure)
+		end
+	end
+
+	self structures add (s)
+
+end
+//[cf]
+//[cf]
+//[of]:declareFunctions
+function declareFunctions
+
+	self program eachFunction do f
+		if f isMacro
+			f generator = (Size : 0) cast (Pointer)
+		else
+			f generator = self getFunctionName (f)
+			var index = Index : 0
+			f eachParameter do p
+				if not p type isMeta
+					p generator = self getFunctionParameterName (p name, index)
+					index ++
+				end
+			end
+			self out << String : (f entry cond "extern " else "static ")
+			flushFunctionDeclaration (self out, f)
+			self out << String : ";\n"
+		end
+	end
+
+end
+
+//[of]:getFunctionParameterName
+//[c]Generate a name for function parameters
+//[c]
+function getFunctionParameterName (id: Identifier, index: Integer)
+
+	var out = self nameBuffer
+	out removeAll
+	if id notNil
+		out << CodeUnit : $z
+		out << id string
+	else
+		out << CodeUnit : $v	// don't start with an underscore: can't conflict with a function parameter
+		out << index
+		out << CodeUnit : $x	// end with a non digit: can't conflict with a local variable
+	end
+	return newString (self pool, out string)
+
+end
+//[cf]
+//[cf]
+//[of]:declareExternFunctions
+function declareExternFunctions
+
+	self program eachExternFunction do f
+		f generator = self getExternFunctionName (f)
+		self out << String : "extern "
+		var e : CExternFunctionExpression
+		e initialize (f)
+		flushDeclaration (self out, functionType (f), e)
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:declareGlobalVariables
+function declareGlobalVariables
+
+	self program eachGlobalVariable do v
+		var name = self getGlobal (v name string)
+		v generator = name
+		self out << String : "extern "
+		flushStringDeclaration (self out, v storageType, name)
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:declareStructureConstants
+function declareStructureConstants
+
+	self program eachStructureConstant do e
+		var name = self getGlobal ("S")
+		e generator = name
+		self out << String : "extern "
+		flushStringDeclaration (self out, e structure, name)
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:declareArrayConstants
+function declareArrayConstants
+
+	self program eachArrayConstant do e
+		var name = self getGlobal ("A")
+		e generator = name
+		self out << String : "extern "
+		flushStringDeclaration (self out, e arrayType, name)
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+
+//[of]:defineStructures
+function defineStructures
+
+	self out << String : "\n/* Define structures */\n"
+
+	self structures each do s
+		self out << String : "struct "
+		self out << s cname
+		self out << String : "\n{\n"
+		
+		// If the parent structure is flexible with must exclude the zero-size array,
+		// so we need to expand all parents
+		if s parentStructure isFlexible
+			self generateAttributes (s, true)
+		else
+			if s parentStructure notNil
+				self out << String : "\t"
+				flushStringDeclaration (self out, s parentStructure, "__parent")
+				self out << String : ";\n"
+			end
+		
+			s eachAttribute do a
+				self out << String : "\t"
+				flushStringDeclaration (self out, a storageType, a cname)
+				self out << String : ";\n"
+			end
+		end
+
+		// Add a dummy attribute if the structure is empty
+		if s size == 0
+			self out << String : "\tint dummy;\n"
+		end
+		
+		self out << String : "};\n"
+	end
+
+end
+
+function generateAttributes (s: *StructureType, includeEmpty: Bool) :
+
+	if s parentStructure notNil
+		self out << String : "\tstruct {\n"
+		self generateAttributes (s parentStructure, false)
+		self out << String : "\t} __parent;\n"
+	end
+
+	s eachAttribute do a
+		if includeEmpty or a storageType size <> 0
+			self out << String : "\t"
+			flushStringDeclaration (self out, a storageType, a cname)
+			self out << String : ";\n"
+		end
+	end
+
+end
+//[cf]
+//[of]:defineString8Constants
+function defineString8Constants
+
+	self out << String : "\n/* Define all strings */\n"
+
+	self program eachString8Constant do e
+		var name = self getGlobal ("S")
+		e generator = name
+		self out << String : "static unsigned char " << name << String : "[]=\""
+		var p = e value
+		repeat
+			var c = p []
+			p ++
+			if c isNul
+				break
+			end
+			flushChar (self out, c cast (Char))
+		end
+		self out << String : "\";\n"
+	end
+
+end
+//[cf]
+//[of]:defineString16Constants
+function defineString16Constants
+
+	self out << String : "\n/* Define all wstrings */\n"
+
+	self program eachString16Constant do e
+		var name = self getGlobal ("S")
+		e generator = name
+		self out << String : "static unsigned short " << name << String : "[]=L\""
+		var p = e value
+		repeat
+			var c = p []
+			p ++
+			if c isNul
+				break
+			end
+			flushChar (self out, c cast (Char))
+		end
+		self out << String : "\";\n"
+	end
+
+end
+//[cf]
+//[of]:defineStructureConstants
+function defineStructureConstants
+
+	self out << String : "\n/* Define structure constants */\n"
+
+	self program eachStructureConstant do e
+		flushStringDeclaration (self out, e structure, e cname)
+		self out << CodeUnit : $= << CodeUnit : ${
+		
+		var iter	: ConstantWriter
+		iter initialize (e values)
+		self readConstantStructure (e structure, iter)
+		
+		self out << String : "};\n"
+	end
+
+end
+//[cf]
+//[of]:defineArrayConstants
+function defineArrayConstants
+
+	self out << String : "\n/* Define array constants */\n"
+
+	self program eachArrayConstant do e
+		// Some C compilers don't like empty array size: let's create an array
+		// with one element and no initializer.
+		if e values size == 0
+			e arrayType arraySize = 1
+			flushStringDeclaration (self out, e arrayType, e cname)
+			e arrayType arraySize = 0
+		else
+			flushStringDeclaration (self out, e arrayType, e cname)
+			self out << CodeUnit : $=
+			var iter	: ConstantWriter
+			iter initialize (e values)
+			self readConstantArray (e arrayType, iter)
+		end
+		
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:defineGlobalVariables
+function defineGlobalVariables
+
+	self out << String : "\n/* Define global variables */\n"
+	
+	self program eachGlobalVariable do v
+		var initialValue = v initialValue
+		flushStringDeclaration (self out, v storageType, v cname)
+		if initialValue notNil
+			self out << String : " = "
+			self out << self generateExpression (initialValue)
+		end
+		self out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:defineFunctions
+function defineFunctions
+
+	self out << String : "\n/* Define functions */\n"
+
+	self program eachFunction do f
+		if not f isMacro
+			self localIndex = 1
+			self currentFunction = f
+			self unwindItem = nil
+			f prepareLocals
+			var cblock = self generateBlock (f body)
+	
+			// Output result
+			if not f entry
+				self out << String : "static "
+			end
+			flushFunctionDeclaration (self out, f)
+			self out << String : "\n"
+			cblock write (self out, self indentBuffer)
+			self out << String : "\n"
+		end
+	end
+
+end
+//[cf]
+
+//[of]:readConstantStructure
+function readConstantStructure (structure: *StructureType, iter: *ConstantWriter) :
+
+	if structure parentStructure notNil
+		self readConstantStructure (structure parentStructure, iter)
+	end
+	
+	structure eachAttribute do a
+		self readConstantValue (a storageType, iter)
+	end
+
+	if structure size == 0
+		if iter comma
+			self out << String : ", "
+		end
+		iter comma = true
+		self out << CodeUnit : $0
+	end
+
+end
+//[cf]
+//[of]:readConstantArray
+function readConstantArray (arrayType: *ArrayType, iter: *ConstantWriter) :
+
+	if iter comma
+		self out << String : ", "
+	end
+	iter comma = false
+
+	self out << CodeUnit : ${
+	if iter isEOF
+		// Empty list
+	else
+		var cellType = arrayType cellType
+		var n = arrayType arraySize
+		var i = Size : 0
+		repeat
+			if n == 0
+				if iter isEOF
+					break
+				end
+			elsif i == n
+				break
+			end
+			self readConstantValue (cellType, iter)
+			i ++
+		end	
+	end
+	self out << CodeUnit : $}
+
+end
+//[cf]
+//[of]:readConstantValue
+function readConstantValue (type: *Type, iter: *ConstantWriter) :
+
+	if type isStructure
+		self readConstantStructure (type asStructure, iter)
+	elsif type isArray
+		self readConstantArray (type asArray, iter)
+	else
+		if iter comma
+			self out << String : ", "
+		end
+		iter comma = true
+		self out << self generateExpressionWithType (iter value, type)
+		iter next
+	end
+
+end
+//[cf]
+//[cf]
+	
+	// private
+//[of]:	generating instructions
+//[of]:generateBlock
+function generateBlock (block: *Block) : *CBlock
+
+	var cblock = self withBlock do
+		// Save the unwind pointer at the beginning of the block
+		var startUnwind = self unwindItem
+		
+		// Declare regular local variables
+		block variables each do v
+			var name = self getLocal (v name string)
+			self declareLocal (v storageType, name)
+			v generator = name
+		end
+		
+		// Generate Instructions
+		block instructions each do i
+			self generateInstruction (i)
+		end
+		
+		// Unwind
+		if not block terminated
+			self generateUnwindTo (startUnwind)
+		end
+		
+		// Restore the unwind pointer
+		self unwindItem = startUnwind
+	end
+
+	return cblock
+
+end
+//[cf]
+//[of]:generateInstruction
+function generateInstruction (i: *Instruction)
+
+	switch i code
+	case 'evaluate
+		self generateEvaluate (i asEvaluate)
+	case 'variable
+		self generateVariable (i asVariable)
+	case 'assign
+		self generateAssign (i asAssign)
+	case 'return
+		self generateReturn (i asReturn)
+	case 'leave
+		self generateLeave (i asLeave)
+	case 'if
+		self generateIf (i asIf)
+	case 'while
+		self generateWhile (i asWhile)
+	case 'break
+		self generateBreak (i asBreak)
+	case 'continue
+		self generateContinue (i asBreak)
+	case 'switch
+		self generateSwitch (i asSwitch)
+	case 'block
+		self cblock body add (self generateBlock (i asBlock block))
+	case 'defer
+		self generateDefer (i asDefer)
+	else
+		assertFailure ("Unhandled instruction")
+	end
+
+end
+//[cf]
+//[of]:generateEvaluate
+function generateEvaluate (i: *EvaluateInstruction)
+	i values each do e
+		var ce = self generateExpression (e)
+		// There may be nothing to evaluate, code may have been 
+		// generated, e.g. vargs_each.
+		if ce notNil
+			self cblock body add (self pool new (CEvaluate, ce))
+		end
+	end
+end
+//[cf]
+//[of]:generateVariable
+function generateVariable (i: *VariableInstruction)
+	self generateLoad (i variable cname, i value, i variable storageType)
+end
+//[cf]
+//[of]:generateAssign
+function generateAssign (instruction: *AssignInstruction)
+
+	// All variables but the last must be copied to temporary values
+	// because some lvalues may depends on previous assigned values.
+	//	a1, a2, ..., an = v1, v2, ..., vn
+	// becomes
+	//	t1 = e1
+	//	t2 = e2
+	//	...
+	//	an = en
+	//	a1 = t1
+	//	a2 = t2
+	//
+	var lvalues = instruction left
+	var rvalues = instruction right
+	var tvalues = self pool allocateArray (*CStringExpression, rvalues size - 1)
+	var n = rvalues size - 1
+	var i = Index : 0
+	var iterLeft = lvalues firstElement
+	var iterRight = rvalues firstElement
+	while i < n
+		var left = iterLeft object
+		var right = iterRight object
+ 		tvalues [i] = self generateAutoLoad (right, left type)
+		iterLeft = iterLeft nextSibling
+		iterRight = iterRight nextSibling
+		i ++
+	end
+
+	var left = lvalues last
+	var type = left type
+	var cleft = self generateExpression (left)
+	var cright = self generateExpressionWithType (rvalues last, type)
+	self cblock body add (self pool new (CAssign, cleft, cright))
+
+	i = 0
+	var iter = lvalues firstElement
+	while i < n
+		var left = self generateExpression (iter object)
+		self cblock body add (self pool new (CAssign, left, tvalues [i]))
+		iter = iter nextSibling
+		i ++
+	end
+
+end
+//[cf]
+//[of]:generateIf
+function generateIf (i: *IfInstruction)
+	self generateCondition (i rules firstElement, i elseBlock)
+end
+
+function generateCondition (rule: *Rule, elseBlock: *Block) :
+	var c = self pool new (CIf)
+	c condition = self generateExpression (rule condition)
+	c thenBlock = self generateBlock (rule block)
+	var next = rule nextSibling
+	if next notNil
+		// Generate containing the if (the condition may require some additional code)
+		c elseBlock = self withBlock do
+			self generateCondition (next, elseBlock)
+		end
+	elsif elseBlock notNil
+		c elseBlock = self generateBlock (elseBlock)
+	end
+	self cblock body add (c)
+end
+//[cf]
+//[of]:generateWhile
+function generateWhile (i: *WhileInstruction)
+
+	var info : PWhile
+	if i hasBreak or i hasContinue
+		info exitLabel = self getLocal ("L")
+		info continueLabel = self getLocal ("L")
+		info startUnwind = self unwindItem
+		i generator = info
+	end
+	
+	var w = self pool new (CWhile)
+	w condition = i condition notNil cond self generateExpression (i condition) else nil
+	w block = self generateBlock (i block)
+	self cblock body add (w)
+
+	if i hasContinue
+		w block body add (self pool new (CLabel, info continueLabel))
+	end
+	if i hasBreak
+		self generateLabel (info exitLabel)
+	end
+
+end
+//[cf]
+//[of]:generateBreak
+function generateBreak (i: *BreakInstruction)
+	var info = i instruction generator downcast (*PWhile)
+	self generateUnwindTo (info startUnwind)
+	self generateGoto (info exitLabel)
+end
+//[cf]
+//[of]:generateContinue
+function generateContinue (i: *BreakInstruction)
+	var info = i instruction generator downcast (*PWhile)
+	self generateUnwindTo (info startUnwind)
+	self generateGoto (info continueLabel)
+end
+//[cf]
+//[of]:generateSwitch
+function generateSwitch (i: *SwitchInstruction)
+	var sw = self pool new (CSwitch)
+	sw value = self generateExpression (i value)
+	i choices each do c
+		var cc = self pool new (CChoice)
+		sw choices add (cc)
+		c values each do v
+			cc values add (self generateExpression (v))
+		end
+		cc block = self generateBlock (c block)
+	end
+	if i elseBlock notNil
+		sw elseBlock = self generateBlock (i elseBlock)
+	end
+	self cblock body add (sw)
+end
+//[cf]
+//[of]:generateReturn
+function generateReturn (instruction: *ReturnInstruction)
+
+	// Regular return
+	var values = instruction expressions
+	var returnTypes = self currentFunction returnTypes
+
+	var statement = self pool new (CReturn)
+	var n = instruction expressions size
+	var index = Index : 0
+	instruction expressions each do e
+		if index == 0
+			statement value = self generateAutoLoad (e, returnTypes [index])
+		else
+			var left = self pool new (CDereferenceExpression, self pool new (COutExpression, index))
+			var ce = self generateExpressionWithType (e, returnTypes [index])
+			self cblock body add (self pool new (CAssign, left, ce))
+		end
+		index ++
+	end
+	
+	// Unwind the stack up to the beginning of the function
+	self generateUnwindTo (nil)
+	
+	// Add it at the end
+	self cblock body add (statement)
+	
+end
+//[cf]
+//[of]:generateLeave
+function generateLeave (instruction: *LeaveInstruction)
+
+	var block = instruction block
+	var info = block generator downcast (*LeaveContext)
+	
+	// Copy result to return values
+	var i = Index : 0
+	instruction arguments each do e
+		self generateLoad (info returnValues [i], e, info returnTypes [i])
+		i ++
+	end
+
+	// Unwind the stack up to the beginning of the function
+	self generateUnwindTo (info startUnwind)
+	
+	var exitLabel = info exitLabel
+	if exitLabel isNil
+		exitLabel = self getLocal ("L")
+		info exitLabel = exitLabel
+	end
+	self generateGoto (exitLabel)
+
+end
+//[cf]
+//[of]:generateDefer
+function generateDefer (i: *DeferInstruction)
+
+	// Push an unwind-item
+	var item = self pool allocate (UnwindItem)
+	item next = self unwindItem
+	item block = i block
+	self unwindItem = item
+
+end
+//[cf]
+//[of]:generateUnwindTo
+//[c]Emits the code to unwind up to the given item
+//[c]
+function generateUnwindTo (limit: *UnwindItem)
+
+	var u = self unwindItem
+	while u <> limit
+		self generateUnwind (u)
+		u = u next
+	end
+
+end
+//[cf]
+//[of]:generateUnwind
+//[c]Emits the code to unwind the given item
+//[c]
+function generateUnwind (item: *UnwindItem)
+	self cblock body add (self generateBlock (item block))
+end
+//[cf]
+//[cf]
+//[of]:	generating expressions
+//[of]:generateExpressionWithType
+function generateExpressionWithType (e: *Expression, type: *Type) : *CExpression
+
+	var ce = self generateExpression (e)
+	if type <> e type
+		ce = self pool new (CCastExpression, ce, type)
+	end
+	return ce
+
+end
+//[cf]
+//[of]:generateExpression
+function generateExpression (e: *Expression) : *CExpression
+
+	switch e code
+//[of]:	select
+	case 'select
+		var select = e asSelect
+		var composite = select argument
+		if composite generator isNil
+			self generateExpression (composite)
+		end
+		var array = composite generator downcast (*[]String)
+		return self pool new (CStringExpression, array [select index])
+//[cf]
+//[of]:	constants
+	case 'constantInteger
+		return self pool new (CIntegerExpression, e asConstantInteger)
+	case 'constantStructure
+		return self pool new (CReferenceExpression, self pool new (CStringExpression, e cname))
+	case 'constantArray
+		return self pool new (CStringExpression, e cname)
+	case 'constantFunction
+		return self pool new (CStringExpression, e asConstantFunction value cname)
+	case 'constantString8
+		return self pool new (CStringExpression, e cname)
+	case 'constantString16
+		return self pool new (CStringExpression, e cname)
+	case 'constantGlobal
+		var v = e asConstantGlobal variable
+		if v storageType isArray
+			// It's an array, it's already a pointer
+			return self pool new (CStringExpression, v cname)
+		else
+			// It's a structure, get the effective address
+			return self pool new (CReferenceExpression, self pool new (CStringExpression, v cname))
+		end
+//[cf]
+//[of]:	minimal and
+	case 'minimalAnd
+		return self generateBinary (e, " && ")
+//[cf]
+//[of]:	minimal or
+	case 'minimalOr
+		return self generateBinary (e, " || ")
+//[cf]
+//[of]:	cond
+	case 'cond
+		var c	= e asCond
+		var returnTypes = c types
+		var condition = self generateExpression (c condition)
+
+		// It is a condition with more than one return type
+		var numReturns = returnTypes size
+		if numReturns > 1
+			var s = self pool new (CIf)
+			s condition = condition
+			var array = self pool allocateArray (String, numReturns)
+			e generator = array
+			
+			// Declare variables
+			numReturns each do i
+				var name = self getLocal ("t")
+				array [i] = name
+				self declareLocal (returnTypes [i], name)
+			end
+			
+			// Create then block
+			var a1 = c argument1 firstElement
+			s thenBlock = self withBlock do
+				numReturns each do i
+					self cblock body add (self pool new (CAssign, self pool new (CStringExpression, array [i]), self generateExpressionWithType (a1 object, returnTypes [i])))
+					a1 = a1 nextSibling
+				end
+			end
+
+			// Create else block
+			var a2 = c argument2 firstElement
+			s elseBlock = self withBlock do
+				numReturns each do i
+					self cblock body add (self pool new (CAssign, self pool new (CStringExpression, array [i]), self generateExpressionWithType (a2 object, returnTypes [i])))
+					a2 = a2 nextSibling
+				end
+			end
+
+			self cblock body add (s)
+			return nil
+		else
+			var left = self generateExpressionWithType (c argument1 firstElement object, returnTypes [0])
+			var right = self generateExpressionWithType (c argument2 firstElement object, returnTypes [0])
+			return self pool new (CCondExpression, condition, left, right)
+		end
+//[cf]
+//[of]:	function call
+	case 'functionCall
+		var call = e asFunctionCall
+		return self generateCall (e, call arguments, call func returnTypes)
+//[cf]
+//[of]:	extern function call
+	case 'externFunctionCall
+		var call = e asExternFunctionCall
+		return self generateCall (e, call arguments, call func returnTypes)
+//[cf]
+//[of]:	pointer call
+	case 'pointerCall
+		var call = e asPointerCall
+		var returnTypes = call func type asPointer target asFunction returnTypes
+		return self generateCall (e, call arguments, returnTypes)
+//[cf]
+//[of]:	function parameter
+	case 'functionParameter
+		var parameter = e asParameter parameter
+		return self pool new (CStringExpression, parameter cname)
+//[cf]
+//[of]:	local variable
+	case 'localVariable
+		var variable	= e asLocalVariable variable
+		var ce = self pool new (CStringExpression, variable cname) upcast (*CExpression)
+		if variable storageType isStructure
+			ce = self pool new (CReferenceExpression, ce)
+		end
+		return ce
+//[cf]
+//[of]:	global variable
+	case 'globalVariable
+		var variable	= e asGlobalVariable variable
+		return self pool new (CStringExpression, variable cname) upcast (*CExpression)
+//[cf]
+//[of]:	attribute
+	case 'attribute
+		var ae = e asAttribute
+		var attribute = ae attribute
+		var s = self generateExpressionWithType (ae argument, attribute structure pointer)
+		var ce = self pool new (CAttributeExpression, s, attribute cname) upcast (*CExpression)
+		if attribute storageType isStructure
+			ce = self pool new (CReferenceExpression, ce)
+		end
+		return ce
+//[cf]
+//[of]:	each extra
+	case 'vargsEach
+		self cblock body add (self generateBlock (e asVargsEach block))
+		return nil
+//[cf]
+//[of]:	cast
+	case 'cast
+		var c = e asUnary
+		return self generateExpressionWithType (c argument, c type)
+//[cf]
+//[of]:	macro call
+	case 'macroCall
+
+		var call = e asMacroCall
+
+		// Create the variables for return values
+		var returnTypes = call types
+		var returnValues : [maxValues] String
+		var i = Index : 0
+		returnTypes each do type
+			var name = self getLocal ("t")
+			self declareLocal (type, name)
+			returnValues [i] = name
+			i ++
+		end
+	
+		var info : LeaveContext
+		info exitLabel = nil // exit label created on the first leave
+		info returnTypes = returnTypes
+		info returnValues = returnValues
+		info startUnwind = self unwindItem
+		call block generator = info
+
+		// Generate the block	
+		self cblock body add (self generateBlock (call block))
+
+		// Insert the label
+		if info exitLabel notNil
+			self generateLabel (info exitLabel)
+		end
+	
+		// Retrieve the return values
+		var size = returnTypes size
+		if size == 0
+			return nil
+		elsif size == 1
+			return self pool new (CStringExpression, returnValues [0])
+		else
+			call generator = returnValues
+			return nil
+		end
+//[cf]
+//[of]:	super
+	case 'super
+		return self generateExpressionWithType (e asUnary argument, e type)
+//[cf]
+		
+//[of]:	integer add
+	case 'integerAdd
+		return self generateBinary (e, " + ")
+//[cf]
+//[of]:	integer sub
+	case 'integerSub
+		return self generateBinary (e, " - ")
+//[cf]
+//[of]:	integer smul, umul
+	case 'integerSmul, 'integerUmul
+		return self generateBinary (e, " * ")
+//[cf]
+//[of]:	integer sdiv, udiv
+	case 'integerSdiv, 'integerUdiv
+		return self generateBinary (e, " / ")
+//[cf]
+//[of]:	integer smod, umod
+	case 'integerSmod, 'integerUmod
+		return self generateBinary (e, " % ")
+//[cf]
+//[of]:	integer shl
+	case 'integerShl
+		return self generateBinary (e, " << ")
+//[cf]
+//[of]:	integer sshr, ushr
+	case 'integerSshr, 'integerUshr
+		return self generateBinary (e, " >> ")
+//[cf]
+//[of]:	integer and
+	case 'integerAnd
+		return self generateBinary (e, " & ")
+//[cf]
+//[of]:	integer or
+	case 'integerOr
+		return self generateBinary (e, " | ")
+//[cf]
+//[of]:	integer xor
+	case 'integerXor
+		return self generateBinary (e, " ^ ")
+//[cf]
+
+//[of]:	integer not
+	case 'integerNot
+		return self pool new (CPrefixExpression, String : "~", self generateExpression (e asUnary argument))
+//[cf]
+//[of]:	integer pos
+	case 'integerPos
+		return self generateExpression (e asUnary argument)
+//[cf]
+//[of]:	integer neg
+	case 'integerNeg
+		return self pool new (CPrefixExpression, String : "-", self generateExpression (e asUnary argument))
+//[cf]
+
+//[of]:	integer assign add
+	case 'integerAssignAdd
+		return self generateCompound (e, " += ")
+//[cf]
+//[of]:	integer assign sub
+	case 'integerAssignSub
+		return self generateCompound (e, " -= ")
+//[cf]
+//[of]:	integer assign smul, umul
+	case 'integerAssignSmul, 'integerAssignUmul
+		return self generateCompound (e, " *= ")
+//[cf]
+//[of]:	integer assign sdiv, udiv
+	case 'integerAssignSdiv, 'integerAssignUdiv
+		return self generateCompound (e, " /= ")
+//[cf]
+//[of]:	integer assign smod, umod
+	case 'integerAssignSmod, 'integerAssignUmod
+		return self generateCompound (e, " %= ")
+//[cf]
+//[of]:	integer assign shl
+	case 'integerAssignShl
+		return self generateCompound (e, " <<= ")
+//[cf]
+//[of]:	integer assign sshr, ushr
+	case 'integerAssignSshr, 'integerAssignUshr
+		return self generateCompound (e, " >>= ")
+//[cf]
+//[of]:	integer assign and
+	case 'integerAssignAnd
+		return self generateCompound (e, " &= ")
+//[cf]
+//[of]:	integer assign or
+	case 'integerAssignOr
+		return self generateCompound (e, " |= ")
+//[cf]
+//[of]:	integer assign xor
+	case 'integerAssignXor
+		return self generateCompound (e, " ^= ")
+//[cf]
+//[of]:	integer assign inc
+	case 'integerAssignInc
+		return self pool new (CPrefixExpression, String : "++", self generateExpression (e asUnary argument))
+//[cf]
+//[of]:	integer assign dec
+	case 'integerAssignDec
+		return self pool new (CPrefixExpression, String : "--", self generateExpression (e asUnary argument))
+//[cf]
+
+//[of]:	integer eq
+	case 'integerEq
+		return self generateCompare (e, " == ")
+//[cf]
+//[of]:	integer ne
+	case 'integerNe
+		return self generateCompare (e, " != ")
+//[cf]
+//[of]:	integer sle
+	case 'integerSle
+		return self generateCompare (e, " <= ")
+//[cf]
+//[of]:	integer slt
+	case 'integerSlt
+		return self generateCompare (e, " < ")
+//[cf]
+//[of]:	integer sge
+	case 'integerSge
+		return self generateCompare (e, " >= ")
+//[cf]
+//[of]:	integer sgt
+	case 'integerSgt
+		return self generateCompare (e, " > ")
+//[cf]
+//[of]:	integer ule
+	case 'integerUle
+		return self generateUnsignedCompare (e, " <= ")
+//[cf]
+//[of]:	integer ult
+	case 'integerUlt
+		return self generateUnsignedCompare (e, " < ")
+//[cf]
+//[of]:	integer uge
+	case 'integerUge
+		return self generateUnsignedCompare (e, " >= ")
+//[cf]
+//[of]:	integer ugt
+	case 'integerUgt
+		return self generateUnsignedCompare (e, " > ")
+//[cf]
+
+//[of]:	boolean not
+	case 'booleanNot
+		return self pool new (CPrefixExpression, String : "!", self generateExpression (e asUnary argument))
+//[cf]
+//[of]:	pointer dereference
+	case 'pointerDereference
+		var a = e asUnary argument
+		var ce = self generateExpression (a)
+		return self pool new (CDereferenceExpression, ce)
+//[cf]
+
+//[of]:	array index
+	case 'arrayIndex
+		var b = e asBinary
+		var ce1 = self generateExpression (b argument1)
+		var ce2 = self generateExpression (b argument2)
+		var ce = self pool new (CIndexExpression, ce1, ce2) upcast (*CExpression)
+		if not self cellType (b) isSimple
+			ce = self pool new (CReferenceExpression, ce)
+		end
+		return ce
+//[cf]
+//[of]:	array add
+	case 'arrayAdd
+		return self generateBinary (e, " + ")
+//[cf]
+//[of]:	array sub, distance
+	case 'arraySub, 'arrayDistance
+		return self generateBinary (e, " - ")
+//[cf]
+//[of]:	array assign add
+	case 'arrayAssignAdd
+		return self generateCompound (e, " += ")
+//[cf]
+//[of]:	array assign sub
+	case 'arrayAssignSub
+		return self generateCompound (e, " -= ")
+//[cf]
+//[of]:	array assign inc
+	case 'arrayAssignInc
+		return self pool new (CPrefixExpression, String : "++", self generateExpression (e asUnary argument))
+//[cf]
+//[of]:	array assign dec
+	case 'arrayAssignDec
+		return self pool new (CPrefixExpression, String : "--", self generateExpression (e asUnary argument))
+//[cf]
+	else
+		assertFailure ("Invalid expression \a", e code)
+		return nil
+	end
+
+end
+//[cf]
+//[of]:generateBinary
+function generateBinary (e: *Expression, op: String)
+	var e1 = self generateExpression (e asBinary argument1)
+	var e2 = self generateExpression (e asBinary argument2)
+	return self pool new (CInfixExpression, e1, op, e2)
+end
+//[cf]
+//[of]:generateCompare
+//[c]Same as generateBinary but the second type is converted to the type of the first argument
+//[c]
+function generateCompare (e: *Expression, op: String)
+	var b = e asBinary
+	var e1 = b argument1
+	var ce1 = self generateExpression (e1)
+	var ce2 = self generateExpressionWithType (b argument2, e1 type)
+	return self pool new (CCompareExpression, ce1, op, ce2)
+end
+//[cf]
+//[of]:generateUnsignedCompare
+//[c]Same as generateBinary but the second type is converted to the type of the first argument
+//[c]
+//[c]	In addition we add an explicit cast as
+//[c]		(unsigned + unsigned) < unsigned will make a signed comparison
+//[c]	
+function generateUnsignedCompare (e: *Expression, op: String)
+	var b = e asBinary
+	var e1 = b argument1
+	var e2 = b argument2
+	var ce1 = self pool new (CCastExpression, self generateExpression (e1), e1 type)
+	var ce2 = self pool new (CCastExpression, self generateExpression (e2), e2 type)
+	return self pool new (CCompareExpression, ce1, op, ce2)
+end
+//[cf]
+//[of]:generateCompound
+function generateCompound (e: *Expression, op: String)
+	return self generateBinary (e, op)
+end
+//[cf]
+//[of]:generateCall
+function generateCall (e: *Expression, arguments: *ExpressionList, returnTypes: *TypeSequence)
+
+	// It is a function call with more than one return type
+	var numReturns = returnTypes size
+	var multiReturn = numReturns > 1
+
+	var call = self pool new (CCallExpression)
+	
+	var array : *[]String
+	if multiReturn
+		// Create variables
+		array = self pool allocateArray (String, numReturns)
+		numReturns each do i
+			var name = self getLocal ("t")
+			self declareLocal (returnTypes [i], name)
+			array [i] = name
+		end
+		e generator = array
+	end
+	
+	switch e code
+	case 'functionCall
+		var f = e asFunctionCall func
+		call f = self pool new (CStringExpression, f cname)
+		zip (f parameters, arguments) do p, a
+			if not a isType
+				call arguments add (self generateExpressionWithType (a, p type))
+			end
+		end
+	case 'externFunctionCall
+		var f = e asExternFunctionCall func
+		call f = self pool new (CStringExpression, f cname)
+		zip (f parameterTypes, arguments) do t, a
+			if not a isType
+				call arguments add (self generateExpressionWithType (a, t))
+			end
+		end
+	else // 'pointerCall
+		var f = e asPointerCall func
+		var pointerType = f type asPointer
+		var functionType = pointerType target asFunction
+		call f = self generateExpression (f)
+		zip (functionType types, arguments) do t, a
+			if not a isType
+				call arguments add (self generateExpressionWithType (a, t))
+			end
+		end
+	end
+
+	if multiReturn
+		// Add out arguments
+		var i = Index : 1
+		while i < numReturns
+			call arguments add (self pool new (CReferenceExpression, self pool new (CStringExpression, array [i])))
+			i ++
+		end
+		self cblock body add (self pool new (CAssign, self pool new (CStringExpression, array [0]), call))
+	end
+	
+	return call	
+
+end
+//[cf]
+//[of]:generateAutoLoad
+function generateAutoLoad (e: *Expression, type: *Type)
+
+	var name = self getLocal ("t")
+	self declareLocal (type, name)
+	self generateLoad (name, e, type)
+	return self pool new (CStringExpression, name)
+
+end
+//[cf]
+//[of]:generateLoad
+function generateLoad (name: String, e: *Expression, type: *Type)
+	var left = self pool new (CStringExpression, name)
+	var right = self generateExpressionWithType (e, type)
+	self cblock body add (self pool new (CAssign, left, right))
+end
+//[cf]
+//[of]:generateLabel
+function generateLabel (name: String)
+	self cblock body add (self pool new (CLabel, name))
+end
+//[cf]
+//[of]:generateGoto
+function generateGoto (label: String)
+	self cblock body add (self pool new (CGoto, label))
+end
+//[cf]
+//[cf]
+//[of]:	utils
+//[of]:getGlobal
+//[c]Generates a globally unique C name based on given name
+//[c]
+function getGlobal (name: String8)
+
+	var out = self nameBuffer
+	out removeAll
+	out << name
+	out << self globalIndex
+	self globalIndex ++
+	return newString (self pool, out string)
+
+end
+//[cf]
+//[of]:getLocal
+//[c]Generates a globally unique C name based on given name
+//[c]
+function getLocal (name: String8)
+
+	var out = self nameBuffer
+	out removeAll
+	out << (name notNil cond name else String8 : "t")
+	out << self localIndex
+	self localIndex ++
+	return newString (self pool, out string)
+
+end
+//[cf]
+//[of]:getIdentifier
+//[c]Generate a name for function parameters
+//[c]
+function getIdentifier (id: Identifier)
+
+	var out = self nameBuffer
+	out removeAll
+	if self reservedIds has (id)
+		out << CodeUnit : $z
+	end
+	out << id string
+	return newString (self pool, out string)
+
+end
+//[cf]
+//[of]:getFunctionName
+function getFunctionName (f: *Function)
+
+	var out = self nameBuffer
+	out removeAll
+	var id = f name
+	if f namingConvention == 'c
+		out << id
+	else
+		if f parameters size > 0
+			var p = f parameters firstElement
+			var type = p type
+			if type isPointer
+				type = type asPointer target
+			end
+			if type code == 'structure
+				out << type asStructure name
+			end
+		end
+		out << CodeUnit : $_
+		out << id
+		out << self globalIndex
+		self globalIndex ++
+	end
+	return newString (self pool, out string)
+
+end
+//[cf]
+//[of]:getExternFunctionName
+function getExternFunctionName (f: *ExternFunction)
+
+	var out = self nameBuffer
+	out removeAll
+	out << f publicName
+	return newString (self pool, out string)
+
+end
+//[cf]
+
+//[of]:withBlock
+function withBlock
+	var cblock = self pool new (CBlock)
+	var saveBlock = self cblock
+	self cblock = cblock
+	yield
+	self cblock = saveBlock
+	return cblock
+end
+//[cf]
+//[of]:declareLocal
+function declareLocal (type: *Type, name: String)
+	self cblock header add (self pool new (CDeclaration, name, type))
+end
+//[cf]
+//[of]:cellType
+function cellType (e: *BinaryExpression)
+	var arrayValue = e argument1
+	var arrayType = arrayValue type asPointer target asArray
+	return arrayType cellType
+end
+//[cf]
+
+//[of]:flushFunctionDeclaration
+static function flushFunctionDeclaration (out: *StringBuffer, f: *Function )
+	var e : CFunctionExpression
+	e initialize (f)
+	flushDeclaration (out, functionType (f), e)
+end
+//[cf]
+//[of]:flushStringDeclaration
+//[c]Flushes a declaration with a string as label
+//[c]
+static function flushStringDeclaration (	out	: *StringBuffer, 
+	type	: *Type, 
+	name	: String) :
+
+	var e : CStringExpression
+	e initialize (name)
+	flushDeclaration (out, type, e)
+
+end
+//[cf]
+//[of]:flushDeclaration
+//[c]Flushes a declaration
+//[c]
+static function flushDeclaration (	out	: *StringBuffer, 
+	type	: *Type,
+	e	: *CExpression) :
+
+	if type isNil
+		out << String : "void"
+	else
+		switch type code
+		case 'nil
+			out << String : "void*"
+		case 'any
+			out << String : "void"
+		case 'boolean
+			out << String : "char"
+		case 'integer
+			switch type size
+			case 1
+				out << String : "char"
+			case 2
+				out << String : "short"
+			case 4
+				out << String : "int"
+			else // 8
+				out << String : "long long"
+			end
+		case 'unsigned
+			switch type size
+			case 1
+				out << String : "unsigned char"
+			case 2
+				out << String : "unsigned short"
+			case 4
+				out << String : "unsigned int"
+			else // 8
+				out << String : "unsigned long long"
+			end
+		case 'size
+			out << String : "size_t"
+	
+		case 'pointer
+			var pointer = type asPointer
+			var ptr : CPointerExpression
+			ptr initialize (e)
+			var target	= pointer target
+			
+			// in C, a pointer to an array is a pointer
+			if target isArray
+				target = target asArray cellType
+			end
+			
+			flushDeclaration (out, target, ptr)
+			return
+		
+		case 'structure
+			out << type asStructure cname
+			
+		case 'array
+			var array = type asArray
+			var ary : CArrayExpression
+			ary initialize (array arraySize, e)
+			flushDeclaration (out, array cellType, ary)
+			return
+	
+		case 'function
+			var f = type asFunction
+			var flb : CFunctionTypeExpression
+			flb initialize (f, e)
+			flushDeclaration (out, returnType (f returnTypes), flb)
+			return
+		
+		else
+			out << String : "*** unknown type ***"
+			return
+		end
+	end
+	
+	out << CodeUnit : 'space << e
+
+end
+//[cf]
+
+//[of]:appendReturnTypes
+static function appendReturnTypes (out: *StringBuffer, returnTypes: *TypeSequence, comm: Bool)
+
+	var comma = comm
+	var first = true
+	var i = Index : 1
+	returnTypes each do t
+		if not first
+			if comma
+				out << String : ", "
+			end
+			comma = true
+			var e : COutExpression
+			e initialize (i)
+			var ptr : CPointerExpression
+			ptr initialize (e)
+			flushDeclaration (out, t, ptr)
+			i ++
+		end
+		first = false
+	end
+
+end
+//[cf]
+//[of]:functionType
+//[c]Returns the first return type or nil
+//[c]
+static function functionType (f: *Prototype)
+	return returnType (f returnTypes)
+end
+//[cf]
+//[of]:returnType
+//[c]Returns the first return type or nil
+//[c]
+static function returnType (types: *TypeSequence)
+	return types size > 0 cond types first else nil
+end
+//[cf]
+//[of]:flushCallingConvention
+static function flushCallingConvention (out: *StringBuffer, cc: CallingConvention)
+
+	if cc == 'cdecl
+		out << String : "CDECL "
+	elsif cc == 'stdcall
+		out << String : "STDCALL "
+	end
+
+end
+//[cf]
+//[of]:flushChar
+//[c]Flushes a character to the output stream
+//[c]
+static function flushChar (out: *StringBuffer, c: Char)
+
+	if c < 32
+		switch c
+		case 'bel
+			out << String : "\\a"
+		case 'bs
+			out << String : "\\b"
+		case 'ff
+			out << String : "\\f"
+		case 'lf
+			out << String : "\\n"
+		case 'cr
+			out << String : "\\r"
+		case 'tab
+			out << String : "\\t"
+		case 'vt
+			out << String : "\\v"
+		else
+			out  << String : "\\x"
+			var s : [4] Char
+
+			var q = c >> 4
+			if q >= 10
+				q += $a - 10
+			else
+				q += $0
+			end
+			out << q
+			q = c & 15
+			if q >= 10
+				q += $a - 10
+			else
+				q += $0
+			end
+			out << q
+		end
+
+	else
+		switch c
+		case $"
+			out << String : "\\\""
+		case $'
+			out << String : "\\'"
+		case $\
+			out << String : "\\\\"
+		else
+			out << c
+		end
+	end
+
+end
+//[cf]
+//[cf]
+
+//[of]:	C-Statements
+//[of]:CStatement
+static struct CStatement
+	var nextSibling	: *CStatement
+	var writeFunction	: & (*CStatement, *StringBuffer, *StringBuffer)
+
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		self writeFunction call (self, out, indent)
+	end
+
+end
+//[cf]
+//[of]:CAssign
+static struct CAssign : CStatement
+	var left	: *CExpression
+	var right	: *CExpression
+	
+	function initialize (left: *CExpression, right: *CExpression)
+		self writeFunction = ref (*CAssign) write (*StringBuffer, *StringBuffer)
+		self left = left
+		self right = right
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent
+		out << self left
+		out << String : " = "
+		out << self right
+		out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:CBlock
+static struct CBlock : CStatement
+	var header	: Collection (CStatement)
+	var body	: Collection (CStatement)
+	
+	function initialize
+		self writeFunction = ref (*CBlock) write (*StringBuffer, *StringBuffer)
+		self header initialize
+		self body initialize
+	end
+
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent << String : "{\n"
+		indent << CodeUnit : 'tab
+		self header each do d
+			d write (out, indent)
+		end
+		self body each do i
+			i write (out, indent)
+		end
+		indent removeLastChar
+		out << indent << String : "}\n"
+	end
+
+end
+//[cf]
+//[of]:CDeclaration
+static struct CDeclaration : CStatement
+	var name	: String
+	var type	: *Type
+	
+	function initialize (name: String, type: *Type)
+		self writeFunction = ref (*CDeclaration) write (*StringBuffer, *StringBuffer)
+		self name = name
+		self type = type
+	end
+
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent
+		flushStringDeclaration (out, self type, self name)
+		out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:CEvaluate
+static struct CEvaluate : CStatement
+	var value	: *CExpression
+	
+	function initialize (value: *CExpression)
+		self writeFunction = ref (*CEvaluate) write (*StringBuffer, *StringBuffer)
+		self value = value
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent
+		out << self value
+		out << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:CGoto
+static struct CGoto : CStatement
+	var label	: String
+	
+	function initialize (label: String)
+		self writeFunction = ref (*CGoto) write (*StringBuffer, *StringBuffer)
+		self label = label
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent << String : "goto " << self label << String : ";\n"
+	end
+
+end
+//[cf]
+//[of]:CLabel
+static struct CLabel : CStatement
+	var label	: String
+	
+	function initialize (label: String)
+		self writeFunction = ref (*CLabel) write (*StringBuffer, *StringBuffer)
+		self label = label
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent << self label << String : ": ;\n"
+	end
+
+end
+//[cf]
+//[of]:CIf
+static struct CIf : CStatement
+	var condition	: *CExpression
+	var thenBlock	: *CBlock
+	var elseBlock	: *CBlock
+	
+	function initialize
+		self writeFunction = ref (*CIf) write (*StringBuffer, *StringBuffer)
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent << String : "if(" << self condition << String : ")\n"
+		self thenBlock write (out, indent)
+		if self elseBlock notNil
+			out << indent << String : "else\n"
+			self elseBlock write (out, indent)
+		end
+	end
+
+end
+//[cf]
+//[of]:CWhile
+static struct CWhile : CStatement
+	var condition	: *CExpression // or nil for infinite loop (repeat)
+	var block	: *CBlock
+	
+	function initialize
+		self writeFunction = ref (*CWhile) write (*StringBuffer, *StringBuffer)
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent
+		if self condition notNil
+			out << String : "while(" << self condition << String : ")\n"
+		else
+			out << String : "for(;;)\n"
+		end
+		self block write (out, indent)
+	end
+
+end
+//[cf]
+//[of]:CSwitch
+static struct CSwitch : CStatement
+	var value	: *CExpression	// The value to check
+	var choices	: Collection (CChoice)	// The list of cases
+	var elseBlock	: *CBlock	// The else block or nil
+	
+	function initialize
+		self writeFunction = ref (*CSwitch) write (*StringBuffer, *StringBuffer)
+		self choices initialize
+		self elseBlock = nil
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent << String : "switch( " << self value << String : " )\n"
+		out << indent << String : "{\n"
+		self choices each do c
+			c values each do v
+				out << indent << String : "case " << v << String : ":\n"
+			end
+			c block write (out, indent)
+			out << indent << String : "break;\n"
+		end
+		if self elseBlock notNil
+			out << indent << String : "default:\n"
+			self elseBlock write (out, indent)
+		end
+		out << indent << String : "}\n"
+	end
+
+end
+
+static struct CChoice
+	var nextSibling	: *CChoice	// Next choice in the collection
+	var values	: Collection (CExpression)	// The list of case values - empty for else block
+	var block	: *CBlock	// The block to evaluate for this case
+	
+	function initialize
+		self values initialize
+	end
+
+end
+//[cf]
+//[of]:CReturn
+static struct CReturn : CStatement
+	var value	: *CExpression
+	
+	function initialize
+		self writeFunction = ref (*CReturn) write (*StringBuffer, *StringBuffer)
+		self value = nil
+	end
+	
+	function write (out: *StringBuffer, indent: *StringBuffer)
+		out << indent
+		out << String : "return"
+		if self value notNil
+			out << String : " " << self value
+		end
+		out << String : ";\n"
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	C-Expressions
+//[of]:CExpression
+static struct CExpression
+	var nextSibling	: *CExpression
+	var writeFunction	: & (*CExpression, *StringBuffer)
+
+	function addToStringBuffer (out: *StringBuffer)
+		self writeFunction call (self, out)
+	end
+
+end
+//[cf]
+//[of]:CAttributeExpression
+static struct CAttributeExpression : CExpression
+	var structure	: *CExpression
+	var attribute	: String
+	
+	function initialize (structure: *CExpression, attribute: String)
+		self writeFunction = ref (*CAttributeExpression) write (*StringBuffer)
+		self structure = structure
+		self attribute = attribute
+	end
+
+	function write (out: *StringBuffer)
+		out << self structure << String : "->" << self attribute
+	end
+
+end
+//[cf]
+//[of]:CCallExpression
+static struct CCallExpression : CExpression
+	var f	: *CExpression
+	var arguments	: Collection (CExpression)
+	
+	function initialize
+		self writeFunction = ref (*CCallExpression) write (*StringBuffer)
+		self f = nil
+		self arguments initialize
+	end
+
+	function write (out: *StringBuffer)
+		out << self f
+		out << CodeUnit : $(
+		var comma = false
+		self arguments each do a
+			comma = writeComma (out, comma)
+			out << a
+		end
+		out << CodeUnit : $)
+	end
+
+	static function writeComma (out: *StringBuffer, comma: Bool)
+		if comma
+			out << String : ", "
+		end
+		return true
+	end
+
+end
+//[cf]
+//[of]:CCastExpression
+static struct CCastExpression : CExpression
+	var expression	: *CExpression
+	var type	: *Type
+	
+	function initialize (e: *CExpression, t: *Type)
+		self writeFunction = ref (*CCastExpression) write (*StringBuffer)
+		self expression = e
+		self type = t
+	end
+
+	function write (out: *StringBuffer)
+		out << String : "(("
+		flushStringDeclaration (out, self type, 'empty)
+		out << CodeUnit : $)
+		out << self expression
+		out << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CCompareExpression
+static struct CCompareExpression: CExpression
+	var op	: String
+	var left	: *CExpression
+	var right	: *CExpression
+	
+	function initialize (left: *CExpression, op: String, right: *CExpression)
+		self writeFunction = ref (*CCompareExpression) write (*StringBuffer)
+		self op = op
+		self left = left
+		self right = right
+	end
+
+	function write (out: *StringBuffer)
+		out << String : "(char)" << CodeUnit : $( << self left << self op << self right << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CCondExpression
+static struct CCondExpression: CExpression
+	var op	: String
+	var condition	: *CExpression
+	var left	: *CExpression
+	var right	: *CExpression
+	
+	function initialize (condition: *CExpression, left: *CExpression, right: *CExpression)
+		self writeFunction = ref (*CCondExpression) write (*StringBuffer)
+		self condition = condition
+		self left = left
+		self right = right
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $( << self condition << CodeUnit : $? << self left << CodeUnit : $: << self right << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CDereferenceExpression
+static struct CDereferenceExpression : CExpression
+	var e	: *CExpression
+	
+	function initialize (e: *CExpression)
+		self writeFunction = ref (*CDereferenceExpression) write (*StringBuffer)
+		self e = e
+	end
+
+	function write (out: *StringBuffer)
+		out << String : "(*" 
+		out << self e
+		out << String : ")"
+	end
+
+end
+//[cf]
+//[of]:CIndexExpression
+static struct CIndexExpression : CExpression
+	var array	: *CExpression
+	var index	: *CExpression
+	
+	function initialize (array: *CExpression, index: *CExpression)
+		self writeFunction = ref (*CIndexExpression) write (*StringBuffer)
+		self array = array
+		self index = index
+	end
+
+	function write (out: *StringBuffer)
+		out << self array << CodeUnit : $[ << self index << CodeUnit : $]
+	end
+
+end
+//[cf]
+//[of]:CInfixExpression
+static struct CInfixExpression: CExpression
+	var op	: String
+	var left	: *CExpression
+	var right	: *CExpression
+	
+	function initialize (left: *CExpression, op: String, right: *CExpression)
+		self writeFunction = ref (*CInfixExpression) write (*StringBuffer)
+		self op = op
+		self left = left
+		self right = right
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $( << self left << self op << self right << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CIntegerExpression
+static struct CIntegerExpression : CExpression
+	var e	: *IntegerExpression
+	
+	function initialize (e: *IntegerExpression)
+		self writeFunction = ref (*CIntegerExpression) write (*StringBuffer)
+		self e = e
+	end
+
+	function write (out: *StringBuffer)
+		var e = self e
+		switch e type code
+		case 'size
+			out << String : "((size_t)0x" << e value cast (Size) << String : "U)"
+		case 'unsigned
+			switch e type size
+			case 1
+				out << String : "((unsigned char)" << e value cast (Uint32) << String : "U)"
+			case 2
+				out << String : "((unsigned short)" << e value cast (Uint32) << String : "U)"
+			case 8
+				out << e value << String : "UL"
+			else  // 4
+				out << e value cast (Uint32) << CodeUnit : $U
+			end
+		case 'integer
+			switch e type size
+			case 1
+				out << String : "((char)" << e value cast (Int32) << CodeUnit : $)
+			case 2
+				out << String : "((short)" << e value cast (Int32) << CodeUnit : $)
+			case 8
+				out << e value cast (Int64) << String : "LL"
+			else
+				if e value <> 0x80000000
+					out << e value cast (Int32)
+				else
+					// Make gcc happy
+					out << e value cast (Uint32) << CodeUnit : $U
+				end
+			end
+		case 'pointer
+			// Null pointer does not requires an explicit cast in C
+			// except in ternary ?: operator.
+			out << String : "(("
+			flushStringDeclaration (out, e type, 'empty)
+			out << CodeUnit : $) << e value cast (Integer) << CodeUnit : $)
+		else
+			// int, bool, enums, nil, ...
+			if e value <> 0x80000000
+				out << e value cast (Integer)
+			else
+				// Make gcc happy
+				out << e unsignedValue << CodeUnit : $U
+			end
+		end
+	end
+
+end
+//[cf]
+//[of]:COutExpression
+static struct COutExpression : CExpression
+	var index: Index
+
+	function initialize (i: Index)
+		self writeFunction = ref (*COutExpression) write (*StringBuffer)
+		self index = i
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $r	// don't start with an underscore: can't conflict with a function parameter
+		out << self index
+		out << CodeUnit : $x	// end with a non digit: can't conflict with a local variable
+	end
+
+end
+//[cf]
+//[of]:CPrefixExpression
+static struct CPrefixExpression: CExpression
+	var op	: String
+	var value	: *CExpression
+	
+	function initialize (op: String, value: *CExpression)
+		self writeFunction = ref (*CPrefixExpression) write (*StringBuffer)
+		self op = op
+		self value = value
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $( << self op << self value << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CReferenceExpression
+static struct CReferenceExpression : CExpression
+	var e	: *CExpression
+	
+	function initialize (e: *CExpression)
+		self writeFunction = ref (*CReferenceExpression) write (*StringBuffer)
+		self e = e
+	end
+
+	function write (out: *StringBuffer)
+		out << String : "(&" 
+		out << self e
+		out << String : ")"
+	end
+
+end
+//[cf]
+//[of]:CStringExpression
+static struct CStringExpression : CExpression
+	var str	: String
+	
+	function initialize (str: String)
+		self writeFunction = ref (*CStringExpression) write (*StringBuffer)
+		self str = str
+	end
+
+	function write (out: *StringBuffer)
+		out << self str
+	end
+
+end
+//[cf]
+
+// For declaration
+//[of]:CFunctionTypeExpression
+static struct CFunctionTypeExpression : CExpression
+	var type	: *FunctionType
+	var inner	: *CExpression
+
+	function initialize (type: *FunctionType, inner: *CExpression)
+		self writeFunction = ref (*CFunctionTypeExpression) write (*StringBuffer)
+		self type = type
+		self inner = inner
+	end
+	
+	function write (out: *StringBuffer)
+		out << CodeUnit : $(
+		flushCallingConvention (out, self type callingConvention)
+		out << self inner << String : ")("
+		var comma = false
+		self type eachType do t
+			if comma
+				out << String : ", "
+			end
+			comma = true
+			flushStringDeclaration (out, t, 'empty)
+		end
+		appendReturnTypes (out, self type returnTypes, comma)
+		out << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CArrayExpression
+static struct CArrayExpression : CExpression
+	var size	: Size
+	var inner	: *CExpression
+
+	function initialize (size: Size, inner: *CExpression)
+		self writeFunction = ref (*CArrayExpression) write (*StringBuffer)
+		self inner = inner
+		self size = size
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $( << self inner << CodeUnit : $) << CodeUnit : $[
+		if self size <> 0
+			out << self size cast (Uint32) // ### Size is written in base 16
+		end
+		out << CodeUnit : $]
+	end
+
+end
+//[cf]
+//[of]:CPointerExpression
+static struct CPointerExpression : CExpression
+	var inner	: *CExpression
+
+	function initialize (inner: *CExpression)
+		self writeFunction	= ref (*CPointerExpression) write (*StringBuffer)
+		self inner	= inner
+	end
+
+	function write (out: *StringBuffer)
+		out << CodeUnit : $* << self inner
+	end
+
+end
+//[cf]
+//[of]:CFunctionExpression
+static struct CFunctionExpression : CExpression
+	var f	: *Function
+
+	function initialize (f: *Function)
+		self writeFunction	= ref (*CFunctionExpression) write (*StringBuffer)
+		self f = f
+	end
+
+	function write (out: *StringBuffer)
+		var f = self f
+		flushCallingConvention (out, f callingConvention)
+		out << f cname
+		out << CodeUnit : $(
+		var comma = false
+		f eachParameter do p
+			if not p type isMeta
+				if comma
+					out << String : ", "
+				end
+				comma = true
+				flushStringDeclaration (out, p type, p cname)
+			end
+		end
+		appendReturnTypes (out, f returnTypes, comma)
+		out << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[of]:CExternFunctionExpression
+static struct CExternFunctionExpression : CExpression
+	var f	: *ExternFunction
+
+	function initialize (f: *ExternFunction)
+		self writeFunction = ref (*CExternFunctionExpression) write (*StringBuffer)
+		self f = f
+	end
+
+	function write (out: *StringBuffer)
+		var f = self f
+		flushCallingConvention (out, f callingConvention)
+		out << f cname
+		out << CodeUnit : $(
+		var comma = false
+		f eachParameterType do type
+			if not type isMeta
+				if comma
+					out << String : ", "
+				end
+				comma = true
+				flushStringDeclaration (out, type, 'empty)
+			end
+		end
+		appendReturnTypes (out, f returnTypes, comma)
+		out << CodeUnit : $)
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	ConstantWriter
+static struct ConstantWriter : ExpressionIterator
+
+	var comma	: Bool
+	
+	function initialize (arguments: *ExpressionList)
+		self super initialize (arguments)
+		self comma = false
+	end
+	
+end
+//[cf]
+//[of]:	LeaveContext
+//[c]When generating the code of an inline function, this context provides
+//[c]information for returns
+//[c]
+static struct LeaveContext
+	var exitLabel	: String	// Return will jump to this label
+	var startUnwind	: *UnwindItem	// Return will unwind up to this label
+	var returnValues	: *[] String	// Name of return variables
+	var returnTypes	: *TypeSequence	// The exact types for the leave instructions
+end
+//[cf]
+//[of]:	PWhile
+//[c]Extra information for a while statement, it provides information for breaks
+//[c]
+static struct PWhile
+
+	var exitLabel	: String	// Break will jump to this label
+	var continueLabel	: String	// Continue will jump to this label
+	var startUnwind	: *UnwindItem	// Return will unwind up to this label
+			
+end
+//[cf]
+//[of]:	UnwindItem
+static struct UnwindItem
+	var next	: *UnwindItem	// The next item to unwind
+	var block	: *Block	// The block to evaluate
+end
+//[cf]
+//[of]:	Extensions
+extend *Type
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *Prototype
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *Parameter
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *Variable
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *Attribute
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *GlobalVariable
+	function cname
+		return self generator downcast (String)
+	end
+end
+
+extend *Expression
+	function cname
+		return self generator downcast (String)
+	end
+end
+//[cf]
+
+end
+//[cf]
+
+.private
+import "data/program"
+import "commons"
+import "std"

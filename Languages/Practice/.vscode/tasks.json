@@ -1,0 +1,55 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Bison",
+            "type": "shell",
+            "command": "/usr/bin/bison",
+            "args": [
+                "-d",
+                "-o",
+                "toy.cpp",
+                "toy.y"
+            ]
+        },
+        {
+            "label": "Flex",
+            "type": "shell",
+            "command": "/usr/bin/flex",
+            "args": [
+                "-o",
+                "tokens.cpp",
+                "toy.lex"
+            ],
+            "dependsOn": [
+                "Bison"
+            ]
+        },
+        {
+            "label": "Test code",
+            "type": "shell",
+            "command": "/usr/bin/g++",
+            "args": [
+                "-c",
+                "`llvm-config --cppflags`",
+                "-D_POSIX_C_SOURCE",
+                "-std=c++11",
+                "-o",
+                "toy",
+                "toy.cpp",
+                "tokens.cpp",
+                "main.cpp"
+            ],
+            "dependsOn": [
+                "Flex"
+            ],
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

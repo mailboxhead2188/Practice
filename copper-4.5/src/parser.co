@@ -1,0 +1,2067 @@
+//[c]The Parser creates a Abstract Syntax Tree (AST) from a stream of tokens.
+//[c]
+//[of]:Parser
+struct Parser
+
+	// private
+	var pool	: *MemoryPool	// Memory pool to store the objects of the parse tree
+	var stream	: TokenStream	// The tokenizer
+	var isMacro	: Bool	// Hack to check if a function has a yield
+	var directives	: *DirectiveSet	// Current directives
+	var module	: *ASTModule	// The module being parsed
+	var defines	: *DefineDictionary	// The command line defines
+	var errorReporter	: *ErrorReporter	// The objet to report an error
+
+//[of]:	initialize - release
+//[of]:initialize
+//[c]DESCRIPTION
+//[c]	Initializes the parsing.
+//[c]
+//[c]ARGUMENTS
+//[c]	pool	--	The memory pool to store the abstract syntax tree
+//[c]	source	--	The source code
+//[c]	file	--	The reference to file being parsed (for error reporting)
+//[c]	defines	--	The command line defines (-Dname=value)
+//[c]	identifiers	--	The dictionary of identifiers (to pass to the lexer)
+//[c]	errorReporter	--	The reporter object
+//[c]
+function initialize (	pool	: *MemoryPool,
+	source	: String8,
+	file	: String,
+	defines	: *DefineDictionary,
+	identifiers	: *IdentifierDictionary,
+	errorReporter	: *ErrorReporter)
+
+	self pool	= pool
+	self module	= pool new (ASTModule, file)
+	self defines	= defines
+	self directives	= {'public, 'native, 'default, false, false, false}
+	self errorReporter	= errorReporter
+	
+	self stream initialize (pool, source, defines, identifiers, file, errorReporter)
+
+end
+//[cf]
+//[of]:release
+function release
+	self stream release
+end
+//[cf]
+//[cf]
+//[of]:	reading
+//[of]:getModule
+function getModule
+
+	self readContent (self module, 'global)
+	self expect ('eof)
+	return self token == 'invalid cond nil else self module
+
+end
+//[cf]
+//[cf]
+//[of]:	private - reading
+//[of]:ContentMask
+static stype ContentMask
+	'global	= 0	// no flag
+	'context	= 1	// meta and static
+	'attribute	= 2	// in structure, but not in extension
+	'symbol	= 4	// in context, but not in extension (issue with order)
+end
+//[cf]
+
+//[of]:readContent
+function readContent (s: *ASTNode, mask: ContentMask) :
+
+	// Save directives and start with public visibility
+	var savedDirectives = self directives
+	if self directives visibility == 'private
+		self directives = self cloneDirectives
+		self directives visibility = 'public
+	end
+	
+	repeat
+		switch self token
+		// Context-only elements
+//[of]:		symbol
+	case 'symbol
+		if (mask & 'symbol) == 0
+			self syntaxError
+		else
+			s << self getSymbol
+		end
+//[cf]
+//[of]:		meta
+	case 'meta
+		if (mask & 'context) == 0
+			self syntaxError
+		else
+			self nextToken
+			switch self token
+			case 'function
+				s << self getFunction ('metaFunction)
+			case 'const
+				s << self getAlias ('metaConst)
+			case 'var
+				s << self getGlobalVariable ('metaVar)
+			case 'struct
+				s << self getStructure ('metaStruct)
+			case 'stype
+				s << self getSubType ('metaType)
+			else
+				self syntaxError
+			end
+		end
+//[cf]
+//[of]:		static
+	case 'static
+		if (mask & 'context) == 0
+			self syntaxError
+		else
+			self nextToken
+			switch self token
+			case 'function
+				s << self getFunction ('function)
+			case 'const
+				s << self getAlias ('const)
+			case 'var
+				s << self getGlobalVariable ('var)
+			case 'struct
+				s << self getStructure ('struct)
+			case 'stype
+				s << self getSubType ('type)
+			else
+				self syntaxError
+			end
+		end
+//[cf]
+
+		// Toplevel-only elements
+//[of]:		extend
+	case 'extend
+		s << self getExtension
+//[cf]
+//[of]:		import
+	case 'import
+		self nextToken
+		if self token == 'function
+			if (mask & 'context) == 0
+				s << self getImportFunction ('importFunction)
+			else
+				s << self getImportFunction ('importInstanceFunction)
+			end
+		elsif self token == 'static
+			self nextToken
+			if (mask & 'context) == 0
+				self syntaxError
+			elsif self token == 'function
+				s << self getImportFunction ('importFunction)
+			else
+				self syntaxError
+			end
+		elsif self token == 'meta
+			self nextToken
+			if (mask & 'context) == 0
+				self syntaxError
+			elsif self token == 'function
+				s << self getImportFunction ('importMetaFunction)
+			else
+				self syntaxError
+			end
+		else
+			s << self getImport
+		end
+//[cf]
+
+		// Anywhere
+//[of]:		function
+	case 'function
+		if (mask & 'context) == 0
+			s << self getFunction ('function)
+		else
+			s << self getFunction ('instanceFunction)
+		end
+//[cf]
+//[of]:		const
+	case 'const
+		if (mask & 'context) == 0
+			s << self getAlias ('const)
+		else
+			s << self getAlias ('instanceConst)
+		end
+//[cf]
+//[of]:		var
+	case 'var
+		if (mask & 'context) == 0
+			s << self getGlobalVariable ('var)
+		else
+			s << self getAttribute
+		end
+		//[cf]
+//[of]:		struct
+	case 'struct
+		if (mask & 'context) == 0
+			s << self getStructure ('struct)
+		else
+			s << self getStructure ('instanceStruct)
+		end
+//[cf]
+//[of]:		type
+	case 'stype
+		if (mask & 'context) == 0
+			s << self getSubType ('type)
+		else
+			s << self getSubType ('instanceType)
+		end
+//[cf]
+//[of]:		point (.)
+	case 'point
+		self applyCurrentDirective
+//[cf]
+//[of]:		br (\\n)
+	case 'br
+		self nextToken
+//[cf]
+
+		case 'eof, 'end
+			break
+		else
+			self syntaxError
+			break
+		end
+	end
+
+	// Restore directives
+	self directives = savedDirectives
+
+end
+//[cf]
+//[of]:getAlias
+//[c]const directives name = expression
+//[c]
+function getAlias (code: ASTElementCode)
+
+	self nextToken
+	var a = self pool allocate (ASTAlias)
+	a line = self line
+	a code = code
+	a directives = self getDirectives
+	a name = self getName
+	self expect ('assign) // =
+	a expression = self getExpression
+	return a
+
+end
+//[cf]
+//[of]:getGlobalVariable
+//[c]
+//[c]module:
+//[c]	'var' id [ ':' type ] [ '=' expression ]
+//[c]
+function getGlobalVariable (code: ASTElementCode)
+
+	self nextToken
+	var v = self pool allocate (ASTGlobalVariable)
+	v line = self line
+	v code = code
+	v directives = self getDirectives
+	v name = self getName
+	if self token == 'colon
+		self nextToken
+		v type = self getExpression
+		v initialValue = nil
+	elsif self token == 'assign
+		self nextToken
+		v initialValue = self getExpression
+		v type = nil
+	else
+		self syntaxError
+	end
+	return v
+	
+end
+//[cf]
+//[of]:getFunction
+//[c]
+//[c]module:
+//[c]	'function' directives [ '+' ] name [ '(' argument-list ')' ] [ ':' [ expression-list ] ]
+//[c]
+//[c]argument-list:
+//[c]	'...'
+//[c]	argument
+//[c]	argument ',' argument-list
+//[c]
+//[c]argument:
+//[c]	name [ ':' type ]
+//[c]
+function getFunction (code: ASTElementCode)
+
+	self nextToken
+	var f = self pool allocate (ASTFunction)
+	f line = self line
+	f code = code
+	f isVariadic = false
+	f generic = false
+	f selfGeneric = false
+	f directives = self getDirectives
+	if code <> 'function and self token == 'add
+		// Skip '+'
+		self nextToken
+		f selfGeneric = true
+		f generic = true
+	end
+	f name = self getName
+
+	// Read the arguments
+	if self token <> 'lparen
+		f parameters = 'empty
+	else
+		// Skip '('
+		self nextToken
+	
+		f parameters	= self pool new (ASTParameterList)
+		repeat
+			self skipEmptyTokens
+			
+			// Read name or ellipsis
+			if self token == 'ellipsis
+				self nextToken
+				f isVariadic = true
+				f generic = true
+				// Do not read more id
+				break
+			end
+			
+			var fp = self pool allocate (ASTParameter)
+			fp line	= self line
+			fp name = self getName
+			
+			// Read the type if any
+			var type = ASTExpression nil
+			if self token == 'colon
+				self nextToken
+				type = self getExpression
+			else
+				f generic = true
+			end
+			fp type = type
+			
+			// Add the argument to the list of arguments
+			f parameters add (fp)
+	
+			// Next
+			if self token <> 'comma
+				break
+			end
+			self nextToken
+		end
+	
+		self expect ('rparen) // )
+	end
+
+	// Read the optional return types
+	var returnTypes = ASTExpressionList nil
+	if self token == 'colon
+		self nextToken
+		if self token <> 'br
+			returnTypes = self getExpressionList
+		else
+			returnTypes = 'empty
+		end
+	end
+	f returnTypes = returnTypes
+	
+	// Reset the yield flag before reading the body
+	// This code works because functions can not be nested.
+	self isMacro = false
+	
+	// Read the body
+	f body = self getBlock
+	f isMacro = self isMacro
+
+	return f
+
+end
+//[cf]
+//[of]:getStructure
+//[c]
+//[c]module:
+//[c]	struct directives name [ '{' id-list '}' ] [ '(' id-list ')' ] [ ':' type ] '\n' type-items 'end'
+//[c]
+function getStructure (code: ASTElementCode)
+
+	self nextToken
+	var s = self pool allocate (ASTType)
+	s line = self line
+	s code = code
+	s children initialize
+	s directives = self getDirectives
+	s name = self getName
+	s parameters = self getTypeParameterList
+	
+	// Read the parent structure
+	var parent = ASTExpression nil
+	if self token == 'colon
+		self nextToken
+		parent = self getExpression
+	end
+	s parent = parent
+
+	self expect ('br)
+	self readContent (s, 'context | 'attribute | 'symbol)
+	self expect ('end)
+	return s
+
+end
+//[cf]
+//[of]:getAttribute
+function getAttribute
+
+	self nextToken
+	var a = self pool allocate (ASTAttribute)
+	a line = self line
+	a code = 'instanceVar
+	a directives = self getDirectives
+	a name = self getName
+	self expect ('colon) // :
+	a type = self getExpression
+	return a
+
+end
+//[cf]
+//[of]:getSubType
+function getSubType (code: ASTElementCode)
+
+	self nextToken
+	var s = self pool allocate (ASTType)
+	s line = self line
+	s code = code
+	s children initialize
+	s directives = self getDirectives
+	s name = self getName
+	s parameters = self getTypeParameterList
+	
+	// Read the optional type
+	var parent = ASTExpression nil
+	if self token == 'colon
+		self nextToken
+		parent = self getExpression
+	end
+	s parent = parent
+
+	self expect ('br)
+	self readContent (s, 'context | 'symbol)
+	self expect ('end)
+	return s
+
+end
+//[cf]
+//[of]:getImportFunction
+function getImportFunction (code: ASTElementCode)
+
+	self nextToken
+	var i = self pool allocate (ASTExternFunction)
+	i line = self line
+	i code = code
+	i directives = self getDirectives
+	
+	// Read the public name
+	var pub = nil cast (String8)
+	if self token == 'string
+		self nextToken
+		pub = self string
+	end
+	i publicName = pub
+
+	i name = self getName
+	i parameters = self getArgumentList
+
+	// Read the return types	
+	var returns = *ASTExpressionList : 'empty
+	if self token == 'colon
+		self nextToken
+		returns = self getExpressionList
+	end
+	i returns = returns
+	return i
+
+end
+//[cf]
+//[of]:getImport
+function getImport
+
+	var i = self pool allocate (ASTImport)
+	i line = self line
+	i code = 'import
+	i directives = self getDirectives
+	
+	if not self unexpected ('string) // Read the name
+		i name = newStringFromString8 (self pool, self string)
+		self nextToken
+	end
+	return i
+
+end
+//[cf]
+//[of]:getExtension
+function getExtension
+
+	self nextToken
+	var s = self pool allocate (ASTExtension)
+	s line	= self line
+	s code = 'extend
+	s children initialize
+	s directives = self getDirectives
+	s type = self getExpression
+	self expect ('br)
+	self readContent (s, 'context)
+	self expect ('end)
+	return s
+
+end
+//[cf]
+//[of]:getSymbol
+function getSymbol
+
+	var v = self pool allocate (ASTSymbol)
+	v line = self line
+	v code = 'symbol
+	v directives = self directives
+	v name = self identifier
+	
+	// Skip the symbol after having saved the current line
+	self nextToken
+	
+	// Get an optional value
+	var e = ASTExpression nil
+	if self token == 'assign
+		self nextToken
+		e = self getExpression
+	end
+	v expression = e
+	
+	self expect ('br)
+	return v
+
+end
+//[cf]
+
+//[of]:getTypeParameterList
+//[c]
+//[c]list-of-type-parameters:
+//[c]	empty
+//[c]	'(' id { ',' id } ')'
+//[c]
+function getTypeParameterList : *ASTParameterList
+
+	if self token <> 'lparen
+		return 'empty
+	end
+
+	self nextToken
+	var p = self pool new (ASTParameterList)
+
+	// Read the list of arguments
+	repeat
+		self skipEmptyTokens
+		
+		var fp = self pool allocate (ASTParameter)
+		fp line = self line
+		fp name = self getName
+		fp type = nil
+		p add (fp)
+		
+		if self token <> 'comma
+			break
+		end
+		self nextToken
+	end
+
+	self expect ('rparen) // )
+	return p
+
+end
+//[cf]
+//[of]:getArgumentList
+//[c]Gets a list of expression between parenthesis
+//[c]
+//[c]list-of-arguments:
+//[c]	empty
+//[c]	"(" list-of-expression ")"
+//[c]
+function getArgumentList : *ASTExpressionList
+
+	if self token == 'lparen
+		self nextToken
+		var list = self getExpressionList
+		self expect ('rparen) // )
+		return list
+	else
+		return 'empty
+	end
+
+end
+//[cf]
+//[of]:getExpressionList
+//[c]Gets a list of expressions
+//[c]
+//[c]list-of-expression:
+//[c]	expression 
+//[c]	list-of-expression "," expression
+//[c]
+function getExpressionList
+
+	var list = self pool new (ASTExpressionList)
+	repeat
+		var e = self getExpression
+		list add (e)
+		if self token <> 'comma
+			break
+		end
+		self nextToken
+	end
+	return list
+
+end
+//[cf]
+//[of]:getInstructionList
+//[c]Gets a sequence of instructions
+//[c]
+//[c]list-of-instructions:
+//[c]	empty
+//[c]	list-of-instructions instruction br
+//[c]
+function getInstructionList : *Collection (ASTInstruction)
+
+	var block = self pool new (ASTInstructionList)
+	repeat
+		self skipEmptyTokens
+		var token = self token
+		if blockTerminators [token]
+			break
+		end
+		block add (self getInstruction)
+		if not self expect ('br)
+			break
+		end
+	end
+	return block
+
+end
+//[cf]
+//[of]:getIdList
+//[c]Gets a list of identifiers
+//[c]
+//[c]	Returns nil if an error occurs, in such a case the error object
+//[c]	is set.
+//[c]
+//[c]list-of-ids:
+//[c]	id
+//[c]	list-of-ids ',' id
+//[c]
+function getIdList
+
+	var list = self pool new (ASTIdList)
+	repeat
+		self skipEmptyTokens
+		list add (self getId)
+		if self token <> 'comma
+			break
+		end
+		self nextToken
+	end
+	return list
+
+end
+//[cf]
+//[of]:getInstruction
+//[c]Gets an instruction
+//[c]
+//[c]instruction:
+//[c]	'return'
+//[c]	'return' list-of-expressions
+//[c]	
+//[c]	list-of-expressions
+//[c]	list-of-expressions = list-of-expressions
+//[c]	
+function getInstruction
+	if self token == 'defer
+		self nextToken
+		var i = self pool allocate (ASTDefer)
+		i line = self line
+		i code = 'defer
+		i instruction = self getInstructionNoPrefix
+		return i
+	else
+		return self getInstructionNoPrefix
+	end
+end
+
+function getInstructionNoPrefix
+	var pool	= self pool
+	var e = ASTInstruction nil
+	switch self token
+//[of]:	begin
+case 'begin
+
+	var i = pool allocate (ASTBegin)
+	i line = self line
+	i code = 'begin
+	self nextToken
+	self expect ('br)
+	i mainBlock = self getInstructionList
+	self expect ('end)
+
+	e = i
+//[cf]
+//[of]:	return
+case 'return
+	self nextToken
+	
+	var i = pool allocate (ASTReturn)
+	i line = self line
+	i code = 'return
+
+	var expressions = *ASTExpressionList : 'empty
+	var token = self token
+	if token <> 'br and token <> 'if
+		expressions = self getExpressionList
+	end
+	i expressions = expressions
+	
+	e = self getTrailingConditional (i)
+//[cf]
+//[of]:	if
+case 'if
+	self nextToken
+
+	var i = pool allocate (ASTIf)
+	i line = self line
+	i code = 'if
+	i rules initialize
+	i elseBlock = nil
+	i rules add (self getRule)
+	
+	repeat
+		var token = self token
+		if token == 'elsif and i elseBlock isNil
+			self nextToken
+			i rules add (self getRule)
+		elsif token == 'else and i elseBlock isNil
+			self nextToken
+			i elseBlock = self getMiniBlock
+		elsif token == 'end
+			self nextToken
+			break
+		else
+			self syntaxError
+			break
+		end
+	end
+
+	e = i
+//[cf]
+//[of]:	while
+case 'while
+	self nextToken
+	var i = pool allocate (ASTWhile)
+	i line = self line
+	i code = 'while
+	i condition = self getExpression
+	i block = self getBlock
+	e = i
+//[cf]
+//[of]:	repeat
+case 'repeat
+	self nextToken
+	var i = pool allocate (ASTWhile)
+	i line = self line
+	i code = 'while
+	i condition = nil
+	i block = self getBlock
+	e = i
+//[cf]
+//[of]:	switch
+case 'switch
+	self nextToken
+	var i = pool allocate (ASTSwitch)
+	i line = self line
+	i code = 'switch
+	i choices initialize
+	i elseBlock = nil
+	i value = self getExpression
+	self expect ('br)
+	repeat
+		self skipEmptyTokens
+		var token = self token
+		if token == 'case and i elseBlock isNil
+			self nextToken
+			i choices add (self getChoice)
+		elsif token == 'else and i elseBlock isNil
+			self nextToken
+			i elseBlock = self getMiniBlock
+		elsif token == 'end
+			self nextToken
+			break
+		else
+			self syntaxError
+			break
+		end
+	end
+	e = i
+//[cf]
+//[of]:	var
+//[c]var v1, v2, ... = e1, e2, ...
+//[c]var v : T [ , id [ ( expression-list ) ] ]
+//[c]
+case 'var
+	self nextToken
+
+	self skipEmptyTokens
+	var v1 = self getId
+
+	if self token == 'colon
+		var i = pool allocate (ASTLocalVariable)
+		i line = self line
+		i code = 'variable
+		i variable = v1 name
+	
+		self nextToken
+		i type = self getExpression
+		
+		var call = ASTFreeCall nil
+		if self token == 'comma
+			self nextToken
+			call = self getFreeCall
+		end
+		i call = call
+		e = i
+	else
+		var i = pool allocate (ASTLocalVariables)
+		i line = self line
+		i code = 'define
+
+		var list = self pool new (ASTIdList)
+		list add (v1)
+		while self token == 'comma
+			self nextToken
+			self skipEmptyTokens
+			list add (self getId)
+		end
+		i variables = list
+
+		if self token == 'assign
+			self nextToken
+			i expressions = self getExpressionList
+		else
+			self syntaxError
+		end
+		e = i
+	end
+//[cf]
+//[of]:	const
+case 'const
+	self nextToken
+
+	var i = self pool allocate (ASTLocalAlias)
+	i line = self line
+	i code = 'alias
+	i name = self getName
+	self expect ('assign) // =
+	i expression = self getExpression
+	e = i
+//[cf]
+//[of]:	break
+case 'break
+	self nextToken
+	var i = pool allocate (ASTBreak)
+	i line = self line
+	i code = 'break
+	var a = *ASTExpressionList : 'empty
+	var token = self token
+	if token <> 'br and token <> 'if
+		a = self getExpressionList
+	end
+	i arguments = a
+	e = self getTrailingConditional (i)
+//[cf]
+//[of]:	continue
+case 'continue
+	self nextToken
+	var i = pool allocate (ASTBreak)
+	i line = self line
+	i code = 'continue
+	var a = *ASTExpressionList : 'empty
+	var token = self token
+	if token <> 'br and token <> 'if
+		a = self getExpressionList
+	end
+	i arguments = a
+	e = self getTrailingConditional (i)
+//[cf]
+//[of]:	evaluation or assignment
+//[c]
+//[c]instruction:
+//[c]	list-of-expressions
+//[c]	list-of-expressions '=' list-of-expressions
+//[c]
+else
+	// Save location before reading the list of expressions
+	var line	= self line
+
+	// Does not start with a regular keyword, it must be an
+	// evaluation or an assignment
+	var lvalues = self getExpressionList
+
+	// Is it an assignment or just an expression evaluation
+	if self token == 'assign
+		self nextToken
+		var i = pool allocate (ASTAssign)
+		i line = line
+		i code = 'assign
+		i leftValues = lvalues
+		i rightValues = self getExpressionList
+		e = i
+	else
+		var i = pool allocate (ASTEvaluate)
+		i line = line
+		i code = 'evaluate
+		i values = lvalues
+		e = i
+	end
+//[cf]
+	end
+	return e
+end
+//[cf]
+//[of]:getBlockClosure
+//[c]'do' id-list block
+//[c]
+function getBlockClosure
+
+	self nextToken
+	var block = self pool allocate (ASTBlockClosure)
+
+	// Read the block parameters
+	var p = *ASTIdList : 'empty
+	if self token == 'id
+		p = self getIdList
+	end
+	block parameters = p
+	
+	block instructions = self getBlock
+	return block
+
+end
+//[cf]
+//[of]:getBlock
+//[c]
+//[c]block: 
+//[c]	br list-of-instructions end
+//[c]
+function getBlock : *Collection (ASTInstruction)
+
+	self expect ('br)
+	var block = self getInstructionList
+	self expect ('end)
+	return block
+
+end
+//[cf]
+//[of]:getMiniBlock
+//[c]
+//[c]mini-block:
+//[c]	br list-of-instructions
+//[c]	
+function getMiniBlock
+
+	self expect ('br)
+	return self getInstructionList
+
+end
+//[cf]
+//[of]:getExpression
+//[c]
+//[c]expression:
+//[c]	'(' expression ')'
+//[c]	integer
+//[c]	string
+//[c]	char
+//[c]	id optional-arguments optional-block
+//[c]	expression op expression
+//[c]	
+//[c]optional-arguments:
+//[c]	empty
+//[c]	'(' list-of-expressions ')'
+//[c]
+//[c]optional-block:
+//[c]	empty
+//[c]	'do' optional-parameters br list-of-instructions 'end'
+//[c]
+//[c]optional-parameters:
+//[c]	empty
+//[c]	list-of-ids
+//[c]
+function getExpression : *ASTExpression
+	return self getExpressionWitthPriority (0)
+end
+
+//[c]
+function getExpressionWitthPriority (currentPriority: Integer) : *ASTExpression
+
+	var pool = self pool
+	var e = ASTExpression nil
+	
+	self skipEmptyTokens
+	switch self token
+//[of]:	(
+case 'lparen
+	self nextToken
+	e = self getExpression
+	self expect ('rparen)
+//[cf]
+//[of]:	[
+//[c]
+//[c]	[ expression ] expression
+//[c]	[ ] expression
+//[c]
+case 'lbrac
+	self nextToken
+	var d = pool allocate (ASTArrayType)
+	d line = self line
+	d code = 'arrayType
+	
+	// The expression between brackets is optional
+	var arraySize = ASTExpression nil
+	if self token <> 'rbrac
+		arraySize = self getExpression
+	end
+	d arraySize	= arraySize
+	
+	self expect ('rbrac) // ]
+
+	d cellType = self getExpressionWitthPriority (32)	// maximum priority
+	e = d
+//[cf]
+//[of]:	{
+case 'lbrace
+	self nextToken
+
+	var d = pool allocate (ASTArray)
+	d line = self line
+	d code = 'sequence
+
+	// Get argument list
+	var a = *ASTExpressionList : 'empty
+	if self token <> 'rbrace
+		a = self getExpressionList
+	end
+	d arguments = a
+
+	self expect ('rbrace) // }
+	e = d
+//[cf]
+//[of]:	integer
+case 'integer
+
+	var n = pool allocate (ASTInteger)
+	n line = self line
+	n code = 'integer
+	n integer = self integer
+	
+	e = n
+	self nextToken
+//[cf]
+//[of]:	string
+case 'string
+
+	var n = pool allocate (ASTString)
+	n line = self line
+	n code = 'string
+	n string = self string
+	
+	e = n
+	self nextToken
+//[cf]
+//[of]:	id
+case 'id
+	e = self getFreeCall
+//[cf]
+//[of]:	symbol
+case 'symbol
+
+	var n = pool allocate (ASTSymbolName)
+	n line = self line
+	n code = 'symbol
+	n symbol = self identifier
+	
+	e = n
+	self nextToken
+//[cf]
+//[of]:	@
+//[c]expression:
+//[c]	'@' expression
+//[c]
+case 'at
+	self nextToken
+	var d = pool allocate (ASTUnary)
+	d line = self line
+	d code = 'typeof
+	d argument = self getExpressionWitthPriority (34)
+	e = d
+//[cf]
+//[of]:	+ - not
+//[c]Prefix operator
+//[c]
+//[c]expression:
+//[c]	'+' expression
+//[c]	'-' expression
+//[c]	'not' expression
+//[c]
+case	'add, 
+	'sub, 
+	'not
+
+	var name, priority = self prefixParams (self token)
+	
+	self nextToken
+
+	// Save line before reading expression
+	var line = self line
+	
+	var context = self getExpressionWitthPriority (priority)
+
+	// Special case for -integer : negate
+	if name == identifiers neg and context code == 'integer
+		var n = pool allocate (ASTInteger)
+		n line = line
+		n code = 'negativeInteger
+		n integer = context asInteger integer
+		e = n
+	else
+		var d = pool allocate (ASTContextCall)
+		d line = line
+		d code = 'contextCall
+		d name = name
+		d arguments = 'empty
+		d context = context
+		d block = nil
+		e = d
+	end
+//[cf]
+//[of]:	*
+//[c]expression:
+//[c]	'*' expression
+//[c]
+case 'mul
+	var priority = Integer : 32
+	self nextToken
+
+	var d = pool allocate (ASTUnary)
+	d line = self line
+	d code = 'pointer
+	d argument = self getExpressionWitthPriority (priority)
+	e = d
+//[cf]
+//[of]:	...
+case 'ellipsis
+	self nextToken
+	var d = pool allocate (ASTExpression)
+	d line = self line
+	d code = 'ellipsis
+	e = d
+//[cf]
+//[of]:	&
+case 'and
+	self nextToken
+
+	var d = pool allocate (ASTFunctionType)
+	d line = self line
+	d code = 'functionType
+	d callingConvention = self getDirectives callingConvention
+	
+	// Read the list of types
+	var p = self getArgumentList
+	if p isNil
+		return nil
+	end
+	d parameters = p
+	
+	var returnTypes = *ASTExpressionList : 'empty
+	if self token == 'to
+		self nextToken
+		self expect ('lparen) // skip '(
+		returnTypes = self getExpressionList
+		self expect ('rparen) // )
+	end
+	d returnTypes = returnTypes
+	
+	e = d
+//[cf]
+//[of]:	ref
+case 'ref
+	self nextToken
+
+	var d = self pool allocate (ASTFunctionReference)
+	d line = self line
+	d code = 'functionReference
+
+	// Read an optional '(expression)'
+	var context = ASTExpression nil
+	if self token == 'lparen
+		self nextToken
+		context = self getExpression
+		self expect ('rparen) // )
+	end
+	d context	= context
+	
+	d name = self getName
+	d types = self getArgumentList
+
+	e = d
+//[cf]
+//[of]:	yield
+case 'yield
+	var i = pool allocate (ASTArray)
+	i line = self line
+	i code = 'yield
+
+	// Advance to next token after saving current line
+	// (yield may be the last token of the line)
+	self nextToken
+
+	var arguments = *ASTExpressionList : 'empty
+	var token = self token
+	if token <> 'br
+		arguments = self getExpressionList
+	end
+	i arguments = arguments
+	
+	// Remember that the function includes a yield
+	self isMacro = true
+
+	e = i
+//[cf]
+	else
+		self syntaxError
+
+		// We must always return a valid expression
+		var n = pool allocate (ASTInteger)
+		n line = self line
+		n code = 'integer
+		n integer = 0
+		e = n
+	end
+	
+//[c]
+//[c]	Now, we have a valid expression
+//[c]	the next token must be checked (for recursive productions):
+//[c]		E -> E op
+//[c]		E -> E op ...
+//[c]		E -> E [ ]
+//[c]
+	repeat
+		var op = self token
+		switch op
+//[of]:		cond
+//[c]
+//[c]instruction:
+//[c]	expression cond expression else expression
+//[c]	
+case 'cond
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 6
+		return e
+	end
+	
+	self nextToken
+	var c = pool allocate (ASTCond)
+	c line = self line
+	c code = 'cond
+	c condition = e
+	c arguments1 = self getExpressionList
+	self expect ('else)
+	c arguments2 = self getExpressionList
+	e = c
+//[cf]
+//[of]:		and
+//[c]
+//[c]instruction:
+//[c]	expression and expression
+//[c]	
+case 'minimalAnd
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 10
+		return e
+	end
+	
+	// Skip 'and'
+	self nextToken
+
+	var b = pool allocate (ASTBinary)
+	b line = self line
+	b code = 'minimalAnd
+	b argument1	= e
+	b argument2 = self getExpressionWitthPriority (10)
+	e = b
+//[cf]
+//[of]:		or
+//[c]
+//[c]instruction:
+//[c]	expression or expression
+//[c]
+case 'minimalOr
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 8
+		return e
+	end
+	
+	// Skip 'or'
+	self nextToken
+	
+	var b = pool allocate (ASTBinary)
+	b line = self line
+	b code = 'minimalOr
+	b argument1 = e
+	b argument2 = self getExpressionWitthPriority (8)
+	e = b
+//[cf]
+//[of]:		\:
+//[c]
+//[c]instruction:
+//[c]	expression ':' expression
+//[c]
+case 'colon
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 31
+		return e
+	end
+
+	var d = pool allocate (ASTBinary)
+	d line = self line
+	d code = 'colon
+	d argument1 = e
+	
+	// Skip ':' after saving the line number
+	self nextToken
+	
+	// Read the type
+	d argument2 = self getExpressionWitthPriority (33)
+	
+	e = d
+//[cf]
+//[of]:		binary operators
+//[c]
+//[c]instruction:
+//[c]	expression op expression
+//[c]	
+case	'add, 'sub, 'dist, 'mul, 'div, 'mod, 'shl, 'shr, 
+	'eq, 'ne, 'le, 'lt, 'ge, 'gt,
+	'and, 'or, 'xor,
+	'assignAdd, 'assignSub,
+	'assignMul, 'assignDiv, 'assignMod,
+	'assignShl, 'assignShr,
+	'assignAnd, 'assignOr , 'assignXor
+
+	var name, leftPriority, rightPriority = self operatorParams (op)
+	
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= leftPriority
+		return e
+	end
+	
+	// Skip the operator
+	self nextToken
+
+	var d = pool allocate (ASTContextCall)
+	d line = self line
+	d code = 'contextCall
+	d name = name
+	d arguments = pool new (ASTExpressionList)
+	d context = e
+	d block = nil
+	d arguments add (self getExpressionWitthPriority (rightPriority))
+	e = d
+//[cf]
+//[of]:		suffix operators
+//[c]
+//[c]instruction:
+//[c]	expression op
+//[c]	
+case 'assignInc, 'assignDec
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 2
+		return e
+	end
+	
+	// Skip the operator
+	self nextToken
+	
+	// Build the list of expressions
+	var d = pool allocate (ASTContextCall)
+	d line = self line
+	d code = 'contextCall
+	d context = e
+	d name = (op == 'assignInc) cond	identifiers cinc else identifiers cdec
+	d arguments = 'empty
+	d block = nil
+	e = d
+//[cf]
+//[of]:		[
+//[c]
+//[c]instruction:
+//[c]	expression '[' list-of-expressions ']'
+//[c]
+case 'lbrac
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 33
+		return e
+	end
+
+	// Skip the '['
+	self nextToken
+
+	var d = pool allocate (ASTContextCall)
+	d line = self line
+	d code = 'contextCall
+	d context = e
+	d name = identifiers at
+	d block = nil
+
+	// Get argument list
+	var arguments = *ASTExpressionList : 'empty
+	if self token <> 'rbrac
+		arguments = self getExpressionList
+	end
+	d arguments	= arguments
+
+	self expect ('rbrac) // ]
+	e = d
+//[cf]
+//[of]:		@
+case 'at
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 34
+		return e
+	end
+
+	self nextToken
+
+	var d = pool allocate (ASTOffset)
+	d line = self line
+	d code = 'offset
+	d type = e
+	d name = self getName
+	e = d
+//[cf]
+//[of]:		id
+case 'id
+	// Compare the precedence of operators
+	// The next operator is ignored if the previous one has
+	// a greater priority.
+	if currentPriority >= 33
+		return e
+	end
+
+	var d = pool allocate (ASTContextCall)
+	d line = self line
+	d code = 'contextCall
+	d context = e
+	d name = self identifier
+	
+	// Skip the id after saving the current line
+	self nextToken
+
+	d arguments = self getArgumentList
+	
+	// Read the block if any		
+	var block = ASTBlockClosure nil
+	if self token == 'do
+		block = self getBlockClosure
+	end
+	d block = block
+
+	e = d
+//[cf]
+		else
+			// No operator: return the expression
+			return e
+		end
+	end
+
+end
+//[cf]
+//[of]:getFreeCall
+function getFreeCall
+
+	var d = self pool allocate (ASTFreeCall)
+	d line = self line
+	d code	= 'freeCall
+	
+	// Read the id
+	d name = self identifier
+	self nextToken
+
+	d arguments = self getArgumentList
+
+	// Read the block if any		
+	var block = ASTBlockClosure nil
+	if self token == 'do
+		block = self getBlockClosure
+	end
+	d block = block
+	return d
+
+end
+//[cf]
+//[of]:getRule
+//[c]Gets a rule
+//[c]
+//[c]rule:
+//[c]	expression mini-block
+//[c]
+function getRule
+
+	var rule = self pool allocate (ASTRule)
+	rule line = self line
+	rule condition = self getExpression
+	rule block = self getMiniBlock
+	return rule
+
+end
+//[cf]
+//[of]:getChoice
+function getChoice
+
+	var choice = self pool allocate (ASTChoice)
+	choice line = self line
+	choice values = self getExpressionList
+	choice block = self getMiniBlock
+	return choice
+
+end
+//[cf]
+//[of]:getId
+//[c]Reads an identifier as an Id
+//[c]
+function getId
+
+	var id = self pool allocate (ASTId)
+	id line = self line
+
+	if self unexpected ('id)
+		self syntaxError
+		// We must always return a valid id
+		id name = identifiers empty
+	else
+		id name = self identifier
+		self nextToken
+	end
+	return id
+
+end
+//[cf]
+//[of]:getName
+//[c]Reads an identifier as a string
+//[c]
+function getName
+
+	if self unexpected ('id)
+		return identifiers empty
+	end
+	var name = self identifier
+	self nextToken
+	return name
+
+end
+//[cf]
+//[of]:getDirectives
+function getDirectives
+
+	// Optimization: no directive, don't clone directives
+	if self token <> 'point and self token <> 'lbrac
+		return self directives
+	end
+	
+	var directives = self cloneDirectives
+	repeat
+		if self token == 'point
+			self applyDirective (directives)
+		elsif self token == 'lbrac
+			self applyIfdef (directives)
+		else
+			break
+		end
+	end
+	return directives
+
+end
+//[cf]
+//[of]:getTrailingConditional
+function getTrailingConditional (instruction: *ASTInstruction)
+
+	if self token <> 'if
+		return instruction
+	end
+	
+	// Skip 'if' keyword
+	self nextToken
+	
+	//  Create the if statement
+	var i = self pool allocate (ASTIf)
+	i line = self line
+	i code = 'if
+	i rules initialize
+	i elseBlock = nil
+	
+	// Create the rule
+	var rule = self pool allocate (ASTRule)
+	rule line = self line
+	i rules add (rule)
+	
+	// Create the block with the single instruction
+	var then	= self pool new (ASTInstructionList)
+	then add (instruction)
+	rule block = then
+	
+	// Get the condition
+	rule condition = self getExpression
+	
+	return i
+
+end
+//[cf]
+//[cf]
+//[of]:	private - utils
+//[of]:expect
+//[c]Reads the next token and check that it matches with the expected one.
+//[c]
+function expect (expectedToken: Token)
+
+	var ok = not self unexpected (expectedToken)
+	if ok
+		self nextToken
+	end
+	return ok
+
+end
+//[cf]
+//[of]:skipEmptyTokens
+function skipEmptyTokens
+
+	repeat
+		var token = self token
+		if token <> 'br
+			break
+		end
+		self nextToken
+	end
+
+end
+//[cf]
+//[of]:token
+function token
+	return self stream token
+end
+//[cf]
+//[of]:nextToken
+function nextToken
+	self stream nextToken
+end
+//[cf]
+//[of]:string
+function string
+	return self stream string
+end
+//[cf]
+//[of]:identifier
+function identifier
+	return self stream symbol
+end
+//[cf]
+//[of]:integer
+function integer
+	return self stream integer
+end
+//[cf]
+
+//[of]:line
+function line
+	return self stream line
+end
+//[cf]
+//[of]:operatorParams
+//[c]Get operator parameters
+//[c]
+//[c]RETURN VALUES
+//[c]	* The name of the operator
+//[c]	* The left priority
+//[c]	* The right priority
+//[c]
+function operatorParams (op: Token) : Identifier, Integer, Integer
+	switch op
+	case 'mul
+		return identifiers mul, 26, 26
+	case 'div
+		return identifiers div, 26, 26
+	case 'mod
+		return identifiers mod, 26, 26
+	
+	case 'add
+		return identifiers add, 24, 24
+	case 'sub
+		return identifiers sub, 24, 24
+	case 'dist
+		return identifiers dist, 24, 24
+	
+	case 'shl
+		return identifiers shl, 22, 22
+	case 'shr
+		return identifiers shr, 22, 22
+	
+	case 'and
+		return identifiers logicalAnd, 20, 20
+	case 'xor
+		return identifiers logicalXor, 18, 18
+	case 'or
+		return identifiers logicalOr, 16, 16
+
+	case 'le
+		return identifiers le, 14, 14
+	case 'lt
+		return identifiers lt, 14, 14
+	case 'ge
+		return identifiers ge, 14, 14
+	case 'gt
+		return identifiers gt, 14, 14
+
+	case 'eq
+		return identifiers eq, 12, 12
+	case 'ne
+		return identifiers ne, 12, 12
+	
+	case 'assignAdd
+		return identifiers cadd, 2, 2
+	case 'assignSub
+		return identifiers csub, 2, 2
+	case 'assignMul
+		return identifiers cmul, 2, 2
+	case 'assignDiv
+		return identifiers cdiv, 2, 2
+	case 'assignMod
+		return identifiers cmod, 2, 2
+	case 'assignShl
+		return identifiers cshl, 2, 2
+	case 'assignShr
+		return identifiers cshr, 2, 2
+	case 'assignAnd
+		return identifiers cand, 2, 2
+	case 'assignOr 
+		return identifiers cor, 2, 2
+	else // 'assignXor
+		return identifiers cxor, 2, 2
+	end
+end
+//[cf]
+//[of]:prefixParams
+//[c]Get the name and priority for the operator corresponding to the given token
+//[c]
+function prefixParams (op: Token) : Identifier, Integer
+
+	switch op
+	case 'add 
+		return identifiers pos, 30
+	case 'sub
+		return identifiers neg, 30
+	else // 'not
+		return identifiers logicalNot, 30
+	end
+
+end
+//[cf]
+
+//[of]:unexpected
+//[c]Checks that the token matches with what is expected
+//[c]if it doesn't match, an error is logged.
+//[c]Returns true if the token is not the expected one.
+//[c]
+function unexpected (expectedToken: Token)
+
+	if self token == expectedToken
+		return false
+	end
+	
+	var sb1 : StringBuffer
+	var sb2 : StringBuffer
+	sb1 initialize
+	sb2 initialize
+	sb1 << expectedToken
+	self token add (sb2, self integer, self string, self identifier)
+	self reportError ('syntaxExpectedMessage, sb1 string, sb2 string)
+	sb2 release
+	sb1 release
+	return true
+
+end
+//[cf]
+//[of]:syntaxError
+//[c]Notify the user that the given token is unexpected
+//[c]
+function syntaxError
+
+	var sb : StringBuffer
+	sb initialize
+	self token add (sb, self integer, self string, self identifier)
+	self reportError ('syntaxMessage, sb string)
+	sb release
+
+end
+//[cf]
+//[of]:reportError
+function reportError (fmt: ParserMessage, ...)
+
+	if self token <> 'invalid
+		// Prevent further parsing and error reporting
+		self stream token = 'invalid
+
+		self errorReporter reportError (self module filename, self stream line, fmt, ...)
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	private - directives
+//[of]:cloneDirectives
+function cloneDirectives
+
+	var d = self pool allocate (DirectiveSet)
+	d initializeFrom (self directives)
+	return d
+
+end
+//[cf]
+//[of]:applyCurrentDirective
+function applyCurrentDirective
+
+	self directives = self cloneDirectives
+	self applyDirective (self directives)
+
+end
+//[cf]
+//[of]:applyDirective
+//[c]Reads a directive.
+//[c]
+function applyDirective (directives: *DirectiveSet)
+
+	// Skip '.'
+	self nextToken
+	
+	var name = self getName
+	if name == identifiers public
+		directives visibility = 'public
+	elsif name == identifiers private
+		directives visibility = 'private
+	elsif name == identifiers c
+		directives namingConvention = 'c
+	elsif name == identifiers stdcall
+		directives callingConvention = 'stdcall
+	elsif name == identifiers cdecl
+		directives callingConvention = 'cdecl
+	elsif name == identifiers fast
+		directives callingConvention = 'default
+	elsif name == identifiers entry
+		directives entry = true
+	elsif name == identifiers mustcheck
+		directives mustCheck = true
+	elsif name == identifiers ifdef
+		self readIfdef (directives, false)
+	elsif name == identifiers ifndef
+		self readIfdef (directives, true)
+	elsif name == identifiers ifeq
+		self readIfeq (directives, false)
+	elsif name == identifiers ifne
+		self readIfeq (directives, true)
+	else
+		self syntaxError
+	end
+
+end
+//[cf]
+//[of]:applyIfdef
+//[c]Syntax [varname] and [not varname] for ifdefs.
+//[c]
+function applyIfdef (directives: *DirectiveSet)
+
+	// Skip '['
+	self nextToken
+
+	// Read optional 'not'
+	var invert = false
+	if self token == 'not
+		self nextToken
+		invert = true
+	end
+
+	var name = self getName
+	self expect ('rbrac)
+	directives skip = (self defines hasKey (name string) == invert)
+	return true
+
+end
+//[cf]
+//[of]:readIfdef
+function readIfdef (directives: *DirectiveSet, invert: Bool)
+
+	self expect ('lparen)
+	var name = self getName
+	self expect ('rparen)
+	directives skip = (self defines hasKey (name string) == invert)
+	return true
+
+end
+//[cf]
+//[of]:readIfeq
+function readIfeq (directives: *DirectiveSet, invert: Bool)
+
+	self expect ('lparen)
+	var name = self getName
+	self expect ('comma)
+	
+	var value = String8 : 'empty
+	if not self unexpected ('string)
+		value = self string
+		self nextToken
+	end
+
+	self expect ('rparen)
+
+	var define = self defines [name string]
+	if define isNil
+		self reportError ('undefinedStringConstant)
+	else
+		directives skip = (define isEqual (value) == invert)
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	private - constants
+static stype ParserMessage : String
+	'syntaxExpectedMessage	= "syntax error: expecting \a but found \a"
+	'syntaxMessage	= "syntax error: \a unexpected"
+	'undefinedStringConstant	= "undefined string constant"
+end
+
+static const blockTerminators = *[] Bool : {
+	false,	// 'invalid
+	false,	// 'eof
+	
+	false,	// 'id
+	false,	// 'integer
+	false,	// 'string
+	false,	// 'symbol
+	
+	false,	// 'add
+	false,	// 'sub
+	false,	// 'dist
+	false,	// 'mul
+	false,	// 'div
+	false,	// 'mod
+	false,	// 'shl
+	false,	// 'shr
+	false,	// 'and
+	false,	// 'or
+	false,	// 'xor
+
+	false,	// 'assign
+	false,	// 'assignAdd
+	false,	// 'assignSub
+	false,	// 'assignMul
+	false,	// 'assignDiv
+	false,	// 'assignMod
+	false,	// 'assignShl
+	false,	// 'assignShr
+	false,	// 'assignAnd
+	false,	// 'assignOr
+	false,	// 'assignXor
+	false,	// 'assignInc
+	false,	// 'assignDec
+
+	false,	// 'eq
+	false,	// 'ne
+	false,	// 'le
+	false,	// 'lt
+	false,	// 'ge
+	false,	// 'gt
+	
+	false,	// 'import
+	false,	// 'structure
+	false,	// 'type
+	false,	// 'function
+	false,	// 'static
+	false,	// 'meta
+	false,	// 'variable
+	false,	// 'const
+	false,	// 'extend
+	false,	// 'begin
+	true,	// 'end
+	false,	// 'ref
+	
+	false,	// 'if
+	true,	// 'elsif
+	true,	// 'else
+	false,	// 'while
+	false,	// 'repeat
+	false,	// 'switch
+	true,	// 'case
+	false,	// 'return
+	false,	// 'break
+	false,	// 'continue
+	false,	// 'yield
+	false,	// 'do
+	false,	// 'defer
+
+	false,	// 'minimalAd
+	false,	// 'minimalOr
+	false,	// 'not
+	false,	// 'cond
+	
+	false,	// 'br
+	false,	// 'comma
+	false,	// 'colon
+	false,	// 'lparen
+	false,	// 'rparen
+	false,	// 'lbrac
+	false,	// 'rbrac
+	false,	// 'lbrace
+	false,	// 'rbrace
+	false,	// 'ellipsis
+	false,	// 'at
+	false,	// 'to
+	false}	// 'point
+//[cf]
+
+end
+//[cf]
+
+.private
+import "lexer"
+import "data/ast"	// The output data
+import "data/token"	// The input data
+import "commons"
+import "std"

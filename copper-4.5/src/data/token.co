@@ -1,0 +1,461 @@
+//[of]:Token
+stype Token
+
+	'invalid	// invalid character
+	'eof	// the last token of a stream
+	
+	// Literals
+	'id
+	'integer
+	'string
+	'symbol
+	
+	// Operators
+	'add
+	'sub
+	'dist
+	'mul
+	'div
+	'mod
+	'shl
+	'shr
+	'and
+	'or
+	'xor
+
+	// Assignment	
+	'assign
+	'assignAdd
+	'assignSub
+	'assignMul
+	'assignDiv
+	'assignMod
+	'assignShl
+	'assignShr
+	'assignAnd
+	'assignOr
+	'assignXor
+	'assignInc
+	'assignDec
+
+	// Comparators
+	'eq
+	'ne
+	'le
+	'lt
+	'ge
+	'gt
+	
+	// Keywords
+	'import
+	'struct
+	'stype
+	'function
+	'static
+	'meta
+	'var
+	'const
+	'extend
+	'begin
+	'end
+	'ref
+	
+	'if
+	'elsif
+	'else
+	'while
+	'repeat
+	'switch
+	'case
+	'return
+	'break
+	'continue
+	'yield
+	'do
+	'defer
+
+	'minimalAnd
+	'minimalOr
+	'not
+	'cond
+	
+	// Characters
+	'br
+	'comma
+	'colon
+	'lparen
+	'rparen
+	'lbrac
+	'rbrac
+	'lbrace
+	'rbrace
+	'ellipsis
+	'at
+	'to
+	'point
+
+//[of]:	constants
+meta const keywordCount = Size : 29
+
+meta const keywords = *[] Keyword : {
+
+	"import",	'import,
+	"struct",	'struct,
+	"stype",	'stype,
+	"function",	'function,
+	"static",	'static,
+	"meta",	'meta,
+	"var",	'var,
+	"const",	'const,
+	"extend",	'extend,
+	"begin",	'begin,
+	"end",	'end,
+	"ref",	'ref,
+		
+	"if",	'if,
+	"elsif",	'elsif,
+	"else",	'else,
+	"while",	'while,
+	"repeat",	'repeat,
+	"switch",	'switch,
+	"case",	'case,
+	"return",	'return,
+	"break",	'break,
+	"continue",	'continue,
+	"yield",	'yield,
+	"do",	'do,
+	"defer",	'defer,
+		
+	"and",	'minimalAnd,
+	"or",	'minimalOr,
+	"not",	'not,
+	"cond",	'cond,
+		
+	nil,	'invalid }
+//[cf]
+//[of]:	output
+//[of]:add
+//[c]Prints the token with lexeme to the string buffer.
+//[c]
+function add (	sb	: *StringBuffer, 
+	integer	: Uint64, 
+	string	: String8,
+	identifier	: Identifier)
+
+	switch self
+	case 'id
+		sb << identifier
+	case 'symbol
+		sb << CodeUnit : $'
+		sb << identifier
+	case 'integer
+		sb << integer
+	case 'invalid
+		// The 'integer' parameter contains the invalid input character
+		var c = integer cast (Char)
+		sb addChar (c)
+	else
+		sb << self
+	end	
+
+end
+//[cf]
+//[of]:addToStringBuffer
+//[c]Prints the token to the string buffer.
+//[c]
+function addToStringBuffer (sb: *StringBuffer)
+
+	var s = self findName (Token keywords)
+	if s isNil
+		s = self findName (others)
+	end
+	if s isNil
+		s = "<unknown>" 
+	end
+	sb << s
+
+end
+
+//[of]:findName
+function findName (list: *[] Keyword)
+
+	var item = list
+	while item [] name notNil
+		if self == item [] token
+			return  item [] name
+		end
+		item ++
+	end
+	return nil
+
+end
+//[cf]
+//[cf]
+//[cf]
+//[of]:	private
+static const others = *[] Keyword : {
+
+	"<an identifier>",	'id,
+	"<an integer>",	'integer,
+	"<a char>",	'invalid,
+	"<a string>",	'string,
+	"<end-of-file>",	'eof,
+	"<end-of-line>",	'br,
+		
+	"+",	'add,
+	"-",	'sub,
+	"~",	'dist,
+	"*",	'mul,
+	"/",	'div,
+	"%",	'mod,
+	"<<",	'shl,
+	">>",	'shr,
+		
+	"&",	'and,
+	"|",	'or,
+	"^",	'xor,
+		
+	"=",	'assign,
+		
+	"==",	'eq,
+	"<>",	'ne,
+	"<=",	'le,
+	"<",	'lt ,
+	">=",	'ge,
+	">",	'gt ,
+		
+	",",	'comma,
+	":",	'colon,
+	"(",	'lparen,
+	")",	'rparen,
+	"[",	'lbrac,
+	"]",	'rbrac,
+	"{",	'lbrace,
+	"}",	'rbrace,
+	"...",	'ellipsis,
+	"@",	'at,
+	"->",	'to,
+	".",	'point,
+		
+	nil,	'invalid}
+
+static struct Keyword
+	var name	: String8
+	var token	: Token
+end
+//[cf]
+
+end
+//[cf]
+//[of]:IdentifierDictionary
+//[c]The dictionary of identifiers
+//[c]
+struct IdentifierDictionary
+
+	var pool	: *MemoryPool	// The pool to store the names
+	var associations	: *[] IdentifierAssociation	// Buffer to all associations
+	var tally	: Index	// Number of used slots
+	var allocated	: Index	// Total number of slots
+	var collisions	: Index	// Maximum of collisions occured
+			// It is an upper bound: after removing an association the
+			// value may not be up to date
+	
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (pool: *MemoryPool, initialSize: Index)
+
+	self pool	= pool
+	self collisions	= 0
+	self tally	= 0
+	self allocated	= initialSize
+	self associations	= IdentifierAssociation allocateArray (initialSize)
+	
+	eachAssociation (self associations, initialSize) do a
+		a name = nil
+	end
+
+end
+//[cf]
+//[of]:release
+function release
+
+	// It is the responsibility of the sub-class to free the keys and values
+	IdentifierAssociation freeArray (self associations, self allocated)
+
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:[]
+//[c]Returns the identifier for the given string
+//[c]
+function _at (str: String8)
+	return self get (str) name
+end
+//[cf]
+//[of]:get
+//[c]Return the association containing the identifier and token of the given string
+//[c]
+function get (str: String8)
+	return self lookup (str, str size, str hash)
+end
+//[cf]
+//[of]:lookup
+//[c]Search for a (identifier, token) pair matching the sub-string (str, size) 
+//[c]and the already computed hash.
+//[c]
+//[c]PARAMETERS
+//[c]	str	--	The sub-string to find.
+//[c]	size	--	The size of the sub-string.
+//[c]	hash	--	The pre-computed hash value of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The (identifier, token) pair with the identifier corresponding to the 
+//[c]	sub-string.
+//[c]
+//[c]REMARKS
+//[c]	The token is 'id for regular identifiers and the associated token for 
+//[c]	keywords (e.g. 'if' -> 'if, 'while' -> 'while, ...).
+//[c]
+function lookup (	str	: String8, 
+	size	: String8Size, 
+	hash	: Size )
+
+	var location	= hash cast (Index) umod (self allocated)
+	var count	= Index : 1
+	repeat
+		var a = self associations [location]
+		if a name notNil
+			if a name isEqual (str, size)
+				return a
+			end
+			location ++
+			if location == self allocated
+				location = 0
+			end
+			count ++
+		else
+			var name = self pool allocateArray (Char8, size + 1)
+			copyBytes (name, str, size toByteSize)
+			name [size] = 'nul
+			
+			a name = name cast (Identifier)
+			a token = 'id
+			if count > self collisions
+				self collisions = count
+			end
+			self increaseTally
+			return a
+		end
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:eachKeyAndValue
+//[c]Enumerates keys and values
+//[c]
+function eachKeyAndValue
+
+	self allocated each do i
+		if self notEmpty (i)
+			var a = self associations [i]
+			yield a name, a token
+		end
+	end
+
+end
+//[cf]
+//[of]:resize
+//[c]Resizes the list of associations
+//[c]
+function resize (s: Index)
+
+	var c = Index : 0
+	var a = IdentifierAssociation allocateArray (s)
+	
+	eachAssociation (a, s) do e
+		e name = nil
+	end
+
+	self eachKeyAndValue do name, token
+		var count = Index : 1
+		var location = (name string hash cast (Index)) umod (s)
+		while a [location] name notNil
+			location ++
+			if location == s
+				location = 0
+			end
+			count ++
+		end
+		a [location] name = name
+		a [location] token = token
+		c = max (count, c)
+	end
+	
+	IdentifierAssociation freeArray (self associations, self allocated)
+	
+	self collisions	= c
+	self associations	= a
+	self allocated	= s
+
+end
+//[cf]
+//[of]:increaseTally
+//[c]Increases the counter of items
+//[c]Grow the array if more than 75% of slots are used
+//[c]
+function increaseTally
+
+	self tally ++
+	if self tally * 4 > self allocated * 3
+		self resize (self allocated * 3 / 2)
+	end
+
+end
+//[cf]
+//[of]:name
+function name (i: Index)
+	return self associations [i] name
+end
+//[cf]
+//[of]:isEmpty
+function isEmpty (i: Index)
+	return self name (i) isNil
+end
+//[cf]
+//[of]:notEmpty
+function notEmpty (i: Index)
+	return self name (i) notNil
+end
+//[cf]
+
+//[of]:eachAssociation
+static function eachAssociation (a: *[] IdentifierAssociation, s: Index)
+	s each do i
+		yield a [i]
+	end
+end
+//[cf]
+//[of]:IdentifierAssociation
+//[c]Association name -> token. Most identifier just have the 'id token value but
+//[c]keywords have a specific token value, for instance, 'while' will return 'while.
+//[c]
+static struct IdentifierAssociation
+	var name	: Identifier
+	var token	: Token
+
+	function isEmpty
+		return self name isNil
+	end
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+
+.private
+import "commons"
+import "std"

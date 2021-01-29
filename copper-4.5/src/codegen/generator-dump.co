@@ -1,0 +1,508 @@
+//[of]:CodeGenerator
+struct CodeGenerator
+
+	attr program	: *Program
+	attr debug	: Bool
+	attr dump	: Bool
+	attr out	: StringBuffer
+	attr depth	: Integer
+
+//[of]:	initialize - release
+//[of]:initialize
+method initialize (program: *Program, debug: Bool, dump: Bool)
+	self program = program
+	self debug = debug
+	self dump = dump
+	self out initializeWithSize (65536)
+	self depth = 0
+	
+end
+//[cf]
+//[of]:release
+method release
+	self out release
+end
+//[cf]
+//[cf]
+//[of]:	generating
+//[of]:generate
+method generate (filename: String)
+
+	self lf
+	self program eachFunction do f
+		self dumpFunction (f)
+	end
+
+	output (self out string)	
+	return Error nil
+
+end
+
+method dumpFunction (f: *Function)
+
+	self out << String "--------------------------------------------------------------------------------"
+	self lf
+	self out << f
+	self lf
+	self lf
+
+	self dumpBlock (f body)
+	self lf
+
+end
+
+//[of]:Instructions
+//[of]:dumpBlock
+method dumpBlock (block: *Block) :
+
+	self increaseIndent
+	
+	// List Variables
+	block variables each do v
+		self indent
+		self out << String8 "var "
+		if v name notNil
+			self out << v name
+		else
+			self out << CodeUnit $_ << v : Size
+		end
+		self tab
+		self out << CodeUnit $:
+		self space
+		self out << v storageType
+		self lf
+	end
+	if block variables notEmpty
+		self lf
+	end
+	
+	// List Instructions
+	block instructions each do i
+		self dumpInstruction (i)
+	end
+
+	self decreaseIndent
+	
+end
+//[cf]
+//[of]:dumpInstruction
+method dumpInstruction (i: *Instruction)
+
+	switch i code
+	case 'evaluate
+		self dumpEvaluate (i asEvaluate)
+	case 'assign
+		self dumpAssign (i asAssign)
+	case 'variable
+		self dumpLocalVariable (i asVariable)
+	case 'return
+		self dumpReturn (i asReturn)
+	case 'ireturn
+		self dumpInlineReturn (i asInlineReturn)
+	case 'if
+		self dumpIf (i asIf)
+	case 'while
+		self dumpWhile (i asWhile)
+	case 'block
+		self dumpBegin (i asBlock)
+	end
+
+end
+//[cf]
+//[of]:dumpEvaluate
+method dumpEvaluate (i: *EvaluateInstruction)
+	i values each do e
+		self indent
+		self dumpExpression (e)
+		self lf
+	end
+end
+//[cf]
+//[of]:dumpAssign
+method dumpAssign (i: *AssignInstruction)
+
+	self indent
+	self dumpExpressionList (i left)
+	self space
+	self out << CodeUnit $=
+	self space
+	self dumpExpressionList (i right)
+	self lf
+
+end
+//[cf]
+//[of]:dumpLocalVariable
+method dumpLocalVariable (i: *VariableInstruction)
+
+	self indent
+	//self out << String8 "var "
+	var v = i variable
+	if v name notNil
+		self out << v name
+	else
+		self out << CodeUnit $_ << v : Size
+	end
+	if i value notNil
+		self space
+		self out << CodeUnit $=
+		self space
+		self dumpExpression (i value)
+	end
+	self lf
+
+end
+//[cf]
+//[of]:dumpReturn
+method dumpReturn (i: *ReturnInstruction)
+
+	self indent
+	self out << String8 "return"
+	self space
+	self dumpExpressionList (i expressions)
+	self lf
+
+end
+//[cf]
+//[of]:dumpInlineReturn
+method dumpInlineReturn (i: *InlineReturnInstruction)
+
+	self indent
+	self out << String8 "ireturn"
+	self space
+	zip (i expression expressions, i expressions) do v, e
+		self dumpExpression (v)
+		self out << CodeUnit $=
+		self dumpExpression (e)
+	end
+	self lf
+
+end
+//[cf]
+//[of]:dumpIf
+method dumpIf (i: *IfInstruction)
+	
+	var keyword = String "if"
+	i rules each do r
+		self indent
+		self out << keyword
+		self space
+		self dumpExpression (r condition)
+		self lf
+		self dumpBlock (r block)
+		keyword = "elsif"
+	end
+	
+	if i elseBlock notNil
+		self indent
+		self out << String "else"
+		self lf
+		self dumpBlock (i elseBlock)
+	end
+
+	self indent
+	self out << String "end"
+	self lf
+
+end
+//[cf]
+//[of]:dumpWhile
+method dumpWhile (i: *WhileInstruction)
+	
+	self indent
+	self out << String "while"
+	self space
+	self dumpExpression (i condition)
+	self lf
+
+	self dumpBlock (i block)
+
+	self indent
+	self out << String "end"
+	self lf
+
+end
+//[cf]
+//[of]:dumpBegin
+method dumpBegin (i: *BlockInstruction)
+
+	self indent
+	self out << String "begin"
+	self lf
+	
+	self dumpBlock (i block)
+
+	self indent
+	self out << String "end"
+	self lf
+
+end
+//[cf]
+//[cf]
+//[of]:Expressions
+//[of]:dumpExpression
+method dumpExpression (e: *Expression) :
+
+	switch e code
+	case	'constantInteger,
+		'constantString8,
+		'constantString16,
+		'constantStructure,
+		'constantArray,
+		'constantFunction,
+		'constantGlobal,
+		'type
+	
+		self out << e
+
+	case 'nop
+		self out << String "<nop>"
+		
+	case 'select
+		self out << CodeUnit $$
+		self out << e asSelect index
+		
+	case 'cast
+		self lparen
+		self dumpExpression (e asUnary argument )
+		self out << CodeUnit $:
+		self out << e type
+		self rparen
+		
+	case 'functionParameter
+		var p = e asParameter parameter
+		if p name notNil
+			self out << p name
+		else
+			self out << CodeUnit $_ << p : Size
+		end
+		
+	case 'localVariable
+		var v = e asLocalVariable variable
+		if v name notNil
+			self out << v name
+		else
+			self out << CodeUnit $_ << v : Size
+		end
+		
+	case 'globalVariable
+		self out << e asGlobalVariable variable name
+	case 'functionCall
+		var c = e asFunctionCall
+		var f = c func
+		if f context notNil
+			self out << f context
+			self out << CodeUnit $.
+		end
+		self out << f name
+		self space
+		self dumpExpressionList (c arguments)
+		
+	case 'externFunctionCall
+		var c = e asExternFunctionCall
+		var f = c func
+		if f context notNil
+			self out << f context
+			self out << CodeUnit $.
+		end
+		self out << f name
+		self space
+		self dumpExpressionList (c arguments)
+		
+	case 'attribute
+		var a = e asAttribute
+		self dumpExpression (a argument)
+		self space
+		self out << a attribute name
+	
+	case 'super
+		var s = e asUnary
+		self dumpExpression (s argument)
+		self space
+		self out << String8 "super"
+		
+	case 'integerAdd
+		self infix (e, "+")
+	case 'integerSub
+		self infix (e, "-")
+	case 'integerSmul, 'integerUmul
+		self infix (e, "*")
+	case 'integerSdiv, 'integerUdiv
+		self infix (e, "/")
+	case 'integerSmod, 'integerUmod
+		self infix (e, "%")
+	case 'integerNeg
+		self prefix (e, "-")
+	case 'integerPos
+		self prefix (e, "+")
+	case 'integerShl
+		self infix (e, "<<")
+	case 'integerSshr, 'integerUshr
+		self infix (e, ">>")
+	
+	case 'integerAnd
+		self infix (e, "&")
+	case 'integerOr
+		self infix (e, "|")
+	case 'integerXor
+		self infix (e, "^")
+	case 'integerNot, 'booleanNot
+		self prefix (e, "not ")
+	
+	case 'integerEq
+		self infix (e, "==")
+	case 'integerNe
+		self infix (e, "<>")
+	case 'integerSle, 'integerUle
+		self infix (e, "<=")
+	case 'integerSlt, 'integerUlt
+		self infix (e, "<")
+	case 'integerSge, 'integerUge
+		self infix (e, ">=")
+	case 'integerSgt, 'integerUgt
+		self infix (e, ">")
+
+	case 'integerAssignAdd, 'arrayAssignAdd
+		self infix (e, "+=")
+	case 'integerAssignSub, 'arrayAssignSub
+		self infix (e, "-=")
+	case 'integerAssignSmul, 'integerAssignUmul
+		self infix (e, "*=")
+	case 'integerAssignSdiv, 'integerAssignUdiv
+		self infix (e, "/=")
+	case 'integerAssignSmod, 'integerAssignUmod
+		self infix (e, "%=")
+	case 'integerAssignShl
+		self infix (e, "<<=")
+	case 'integerAssignSshr, 'integerAssignUshr
+		self infix (e, ">>=")
+	case 'integerAssignAnd
+		self infix (e, "&=")
+	case 'integerAssignOr
+		self infix (e, "|=")
+	case 'integerAssignXor
+		self infix (e, "^=")
+	case 'integerAssignInc, 'arrayAssignInc
+		self prefix (e, "++")
+	case 'integerAssignDec, 'arrayAssignDec
+		self prefix (e, "--")
+
+	case 'pointerDereference
+		self suffix (e, "[]")
+	case 'pointerCall
+		var c = e asPointerCall
+		self dumpExpression (c func)
+		self space
+		self out << String8 "call"
+		self space
+		self dumpExpressionList (c arguments)
+
+	case 'arrayIndex
+		var b = e asBinary
+		self dumpExpression (b argument1)
+		self out << CodeUnit $[
+		self dumpExpression (b argument2)
+		self out << CodeUnit $]
+	case 'arrayAdd
+		self infix (e, "+")
+	case 'arraySub
+		self infix (e, "-")
+	case 'arrayDistance
+		self infix (e, "~")
+	else
+		self out << CodeUnit $?
+	end
+	
+end
+//[cf]
+//[of]:dumpExpressionList
+method dumpExpressionList (list: *ExpressionList) :
+
+	if list notEmpty
+		self out << CodeUnit $(
+		var comma = false
+		list each do e
+			if comma
+				self out << CodeUnit $,
+				self out << CodeUnit: 'space
+			end
+			comma = true
+			self dumpExpression (e)
+		end
+		self out << CodeUnit $)
+	end
+
+end
+//[cf]
+//[of]:infix
+method infix (e: *Expression, op: String8)
+	var b = e asBinary
+	self lparen
+	self dumpExpression (b argument1)
+	self space
+	self out << op
+	self space
+	self dumpExpression (b argument2)
+	self rparen
+end
+//[cf]
+//[of]:prefix
+method prefix (e: *Expression, op: String8)
+	var u = e asUnary
+	self out << op
+	self dumpExpression (u argument)
+end
+//[cf]
+//[of]:suffix
+method suffix (e: *Expression, op: String8)
+	var u = e asUnary
+	self dumpExpression (u argument)
+	self out << op
+end
+//[cf]
+//[cf]
+
+method lf
+	self out << CodeUnit 'lf
+end
+
+method tab
+	self out << CodeUnit 'tab
+end
+
+method space
+	self out << CodeUnit 'space
+end
+
+method lparen
+	self out << CodeUnit $(
+end
+
+method rparen
+	self out << CodeUnit $)
+end
+
+method indent
+	var i = self depth
+	while i > 0
+		self tab
+		i --
+	end
+end
+
+method increaseIndent
+	self depth ++
+end
+
+method decreaseIndent
+	self depth --
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+
+.private
+import "program"
+import "commons"
+import "std"

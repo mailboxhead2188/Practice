@@ -1,0 +1,14 @@
+"use strict";
+exports.__esModule = true;
+var hello_1 = require("./hello");
+var hello_2 = require("./hello");
+var additionResult;
+var multiplicationResult;
+var x;
+var y;
+x = 5;
+y = 6;
+additionResult = hello_1.AddNumbers(x, y);
+multiplicationResult = hello_2.MultiplyNumbers(x, y);
+console.log("Addition results: ", additionResult);
+console.log("Multiplication results: ", multiplicationResult);

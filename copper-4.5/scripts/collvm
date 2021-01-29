@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Script to compile with copper-llvm
+# It generates bitcode (.bc) and compile it to an ELF object file (.o)
+#
+# * The -o must be specified
+# * Use -cc <compiler> to use an alternate binary for copper-llvm
+#
+
+COPPERLLVM=copper-llvm
+LLC=llc
+ARGS=
+
+set -e
+
+while [[ $# -gt 0 ]]
+do
+key="$1"
+shift
+case $key in
+	-o)
+		OUT="$1"
+		shift
+		;;
+	-cc)
+		COPPERLLVM="$1"
+		shift
+		;;
+	*)
+		ARGS="${ARGS} $key"
+	;;
+esac
+done
+
+if [ $(uname -m) == 'x86_64' ]; then
+	# Ensure to generate generic x86-64 code (no specific Haswell instructions)
+	LLC="llc -mcpu=x86-64"
+fi
+
+${COPPERLLVM} -o ${OUT}.bc ${ARGS}
+#opt -O1 -f -o ${OUT}.bc ${OUT}.bc
+${LLC} -filetype=obj ${OUT}.bc -o ${OUT}

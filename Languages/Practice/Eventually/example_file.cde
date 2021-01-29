@@ -1,0 +1,25 @@
+# Structural example of a CDE file (for my own little stupid programming language)
+# These are examples of single-line comments
+## Multi-line comments can be made with double-hashes
+ # Strictly speaking, the hashes at the start of lines within multi-line comments
+ # don't need to start with a hash, but it's a nicety
+##
+
+# Simple Hello World
+utilizing IO; # Inline comment for importation of specific lib for I/of
+
+# Attributes define how a function is called, what is returned, what types
+# of exceptions can be thrown from it, and other assundry.
+
+[Returns (int)]
+[Parameters (int, string{})]
+[Throws (Exception)]
+main(argc, argv)
+{
+    # Prints a line to the Console.
+    # EOL characters are handled by platform automatically with this function.
+    printline(Console, "Hello, world!");
+
+    # Prints to the Console. No EOL.
+    print(Console, "Hello, world!\n");
+}

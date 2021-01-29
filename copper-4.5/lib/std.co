@@ -1,0 +1,7436 @@
+//[c]DESCRIPTION
+//[c]	This is the standard Copper library. It includes functions on basic 
+//[c]	data types. It provides structures and types to manipulate text,
+//[c]	numbers, collection and files.
+//[c]	
+//[c]BUILD
+//[c]	To use this module, you must add the following defines:
+//[c]
+//[c]	-D windows
+//[c]		If the target operating systems is Windows.
+//[c]	-D unix
+//[c]		If the target operating systems is a Unix system.
+//[c]	
+//[c]	This module on Unix systems requires the external file-unix.c to be
+//[c]	compiled and linked with the project.
+//[c]
+//[of]:Functions
+//[of]:Primitives
+//[of]:min
+//[c]Returns the min value of the list of arguments
+//[c]
+function min (x, ...)
+	var min = x
+	vargs_each do y
+		if y < min
+			min = y
+		end
+	end
+	return min
+end
+//[cf]
+//[of]:max
+//[c]Returns the max value of the list of arguments
+//[c]
+function max (x, ...)
+	var max = x
+	vargs_each do y
+		if y > max
+			max = y
+		end
+	end
+	return max
+end
+//[cf]
+//[of]:ignore
+//[c]A function that does nothing
+//[c]
+//[c]This function is useful for virtual functions.
+//[c]
+function ignore (...)
+	// Do nothing
+end
+
+//[cf]
+//[of]:alwaysYes
+//[c]Always returns true
+//[c]
+//[c]This function is useful for virtual functions returning a constant boolean.
+//[c]
+function alwaysYes (...)
+	return true
+end
+//[cf]
+//[of]:alwaysNo
+//[c]Always returns false
+//[c]
+//[c]This function is useful for virtual functions returning a constant boolean.
+//[c]
+function alwaysNo (...)
+	return false
+end
+//[cf]
+//[of]:alwaysNil
+function alwaysNil (...)
+	return nil
+end
+//[cf]
+//[of]:zip
+//[c]Iterates on two lists. The second list is assumed to have same or more elements
+//[c]
+function zip (iterable1, iterable2)
+
+	var e2 = iterable2 firstElement
+	iterable1 each do v1
+		var v2 = iterable2 elementValue (e2)
+		yield v1, v2
+		e2 = iterable2 nextElement (e2)
+	end
+
+end
+//[cf]
+//[of]:zip3
+//[c]Iterates on three lists. The second list is assumed to have same or more elements
+//[c]
+function zip3 (iterable1, iterable2, iterable3)
+
+	var e2 = iterable2 firstElement
+	var e3 = iterable3 firstElement
+	iterable1 each do v1
+		var v2 = iterable2 elementValue (e2)
+		var v3 = iterable3 elementValue (e3)
+		yield v1, v2, v3
+		e2 = iterable2 nextElement (e2)
+		e3 = iterable3 nextElement (e3)
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:Anything
+extend Anything
+//[of]:	new
+//[c]Creates a new object and initialize it.
+//[c]
+//[c]PARAMETERS
+//[c]	T	--	The type of the object to create
+//[c]	...	--	The arguments to pass to the 'initialize' function of the object
+//[c]
+//[c]RETURN VALUES
+//[c]	The initialized object.
+//[c]
+meta function + new (...)
+	var obj = self allocate
+	obj initialize (...)
+	return obj
+end
+//[cf]
+//[of]:	newFrom
+//[c]Creates a new object and initialize it using 'initializeFrom'.
+//[c]
+//[c]PARAMETERS
+//[c]	T	--	The type of the object to create
+//[c]	...	--	The arguments to pass to the 'initializeFrom' function of the object
+//[c]
+//[c]RETURN VALUES
+//[c]	The initialized object.
+//[c]
+//[c]REMARKS
+//[c]	The function is the same as 'new' except that it initializes the object 
+//[c]	with 'initializeFrom' instead of 'initialize'.
+//[c]
+meta function + newFrom (...)
+	var obj = self allocate
+	obj initializeFrom (...)
+	return obj
+end
+//[cf]
+//[of]:	allocate
+//[c]Allocates an element of type T.
+//[c]
+meta function + allocate
+	return allocateBytes (self size) cast (*self)
+end
+//[cf]
+//[of]:	free
+meta function + free (p: Pointer)
+	var n = self size
+	freeBytes (p, n)
+end
+//[cf]
+
+//[of]:	allocateArray
+//[c]Allocates an array of elements of type T.
+//[c]
+meta function + allocateArray (n: Index)
+	return allocateBytes (n cast (Size) * self size) cast (*[] self)
+end
+//[cf]
+//[of]:	freeArray
+meta function + freeArray (p: Pointer, n: Index)
+	var bytes = n cast (Size) * self size
+	freeBytes (p, bytes)
+end
+//[cf]
+//[of]:	copyArray
+meta function + copyArray (dst: Pointer, src: Pointer, n : Index)
+	copyBytes (dst, src, self size * n cast (Size))
+end
+//[cf]
+//[of]:	moveArray
+meta function + moveArray (dst: Pointer, src: Pointer, n : Index)
+	moveBytes (dst, src, self size * n : Size)
+end
+//[cf]
+
+//[of]:	hash
+function + hash
+	return self cast (Size)
+end
+//[cf]
+//[of]:	in
+//[c]Returns true if self is in the list of given values
+//[c]
+function + in (...)
+	vargs_each do value
+		if self == value
+			return true
+		end
+	end
+	return false
+end
+//[cf]
+//[of]:	isEqual
+function + isEqual (other)
+	return self == other
+end
+//[cf]
+//[of]:	notEqual
+//[c]Generic function for notEqual: 'a notEqual (b)' is equivalent to 'not a isEqual (b)'
+//[c]
+function + notEqual (other)
+	return not self isEqual (other)
+end
+//[cf]
+//[of]:	notEmpty
+//[c]Generic function for notEmpty: 'a notEmpty' is equivalent to 'not a isEmpty'
+//[c]
+function + notEmpty
+	return not self isEmpty
+end
+//[cf]
+//[of]:	ignore
+//[c]A function that does nothing
+//[c]
+//[c]This function is useful for virtual functions.
+//[c]
+function + ignore (...)
+	// Do nothing
+end
+
+//[cf]
+//[of]:	yes
+//[c]Always returns true
+//[c]
+//[c]This function is useful for virtual functions returning a constant boolean.
+//[c]
+function + yes (...)
+	return true
+end
+//[cf]
+//[of]:	no
+//[c]Always returns false
+//[c]
+//[c]This function is useful for virtual functions returning a constant boolean.
+//[c]
+function + no (...)
+	return false
+end
+//[cf]
+//[of]:	nil
+function + nil (...)
+	return nil
+end
+//[cf]
+//[of]:	addToMemoryBuffer
+//[c]The default generic implementation to add something to a memory buffer:
+//[c]just write the value
+//[c]
+//[c]REMARKS
+//[c]	* It works only with simple types.
+//[c]	* It depends on endianness.
+//[c]
+function + addToMemoryBuffer (mb: *MemoryBuffer)
+	mb add (self)
+end
+//[cf]
+
+end
+//[cf]
+//[of]:Debug Utils
+//[of]:assertFailure
+function .ifdef (debug) assertFailure (s: String, ...) :
+	var x = Integer : 0
+	Integer : 1 / x
+	output (s, ...)
+end
+
+function .ifndef (debug) assertFailure (s: String, ...) :
+end
+//[cf]
+//[of]:assert
+function .ifdef (debug) assert (condition: Bool, s: String, ...)
+	if not condition
+		assertFailure (s, ...)
+	end
+end
+
+function .ifndef (debug) assert (condition: Bool, s: String, ...)
+end
+//[cf]
+//[cf]
+//[cf]
+//[of]:Memory
+//[of]:Aliases
+//[c]These aliases are just convenient names.
+//[c]
+const Pointer	= *Anything	// Pointer to anything
+const Bytes	= *[]Uint8	// Pointer to a byte array, useful for pointer arithmetic and memory access at byte level.
+
+//[cf]
+//[of]:Globals
+//[c]Memory statistics
+//[c]
+//[c]These global variables are public, so any program can report a leak
+//[c]
+var totalBlock	= Size : 0
+var leftBlock	= Size : 0
+var leftBytes	= Size : 0
+var maxBytes	= Size : 0
+//[cf]
+//[of]:Functions
+//[of]:allocateBytes
+function .ifdef (debug) allocateBytes (size: Size)
+	// Statistics
+	totalBlock ++
+	leftBlock ++
+	leftBytes += size
+	if leftBytes > maxBytes
+		maxBytes = leftBytes
+	end
+
+	var p = malloc (size + Integer size * 2 + Size size) cast (Bytes)
+	p cast (*Integer) [] = 0x1234
+	(p + Integer size) cast (*Size) [] = size
+	(p + Integer size + Size size + size) cast (*Integer) [] = 0x5678
+	return p + Integer size + Size size
+end
+
+function .ifndef (debug) allocateBytes (size: Size)
+	return malloc (size) cast (Bytes)
+end
+//[cf]
+//[of]:freeBytes
+function .ifdef (debug) freeBytes (p: Pointer, size: Size)
+	// Freeing a null pointer is valid and has no effect
+	if p isNil
+		return
+	end
+	
+	// Statistics
+	leftBytes -= size
+	leftBlock --
+
+	var q = p downcast (Bytes) - (Integer size + Size size)
+	if q cast (*Integer) [] <> 0x1234
+		assertFailure ("invalid free")
+	end
+	if (q + Integer size) cast (*Size) [] <> size
+		assertFailure ("invalid free size")
+	end
+	if (q + Integer size + Size size + size ) cast (*Integer) [] <> 0x5678
+		assertFailure ("heap corruption after block")
+	end
+	q cast (*Integer) [] = 0xCCC
+
+	free (q)
+end
+
+function .ifndef (debug) freeBytes (p: Pointer, size: Size)
+	// Freeing a null pointer is valid and has no effect
+	if p notNil
+		free (p)
+	end
+end
+//[cf]
+
+//[of]:copyBytes
+function copyBytes (dst: Pointer, src: Pointer, size: Size)
+	var p = src downcast (Bytes)
+	var q = dst downcast (Bytes)
+	var limit = q + size
+	while q <> limit
+		q [] = p []
+		q ++
+		p ++
+	end
+end
+//[cf]
+//[of]:moveBytes
+//[c]Moves a memory block
+//[c]
+function moveBytes (dst: Pointer, src: Pointer, size: Size)
+	var s	= src downcast (Bytes)
+	var d	= dst downcast (Bytes)
+	if d == s
+		return 
+	end
+
+	// Incremental copy if dst is after src or 
+	// if dst is after the end of src
+	if d < s or s + size <= d
+		copyBytes (d, s, size)
+	else
+		var q = d + size
+		var p = s + size
+		while q <> d
+			q --
+			p --
+			q [] = p []
+		end
+	end
+end
+//[cf]
+//[of]:moveArray
+function moveArray (dst, src, Value, n)
+	moveBytes (dst, src, Value size * n cast (Size))
+end
+//[cf]
+//[of]:fillBytes
+//[c]Fills a memory block with the given byte
+//[c]
+function fillBytes (dst: Pointer, size: Size, value: Uint8)
+	var q = dst : Bytes
+	var limit = q + size
+	while q <> limit
+		q [] = value
+		q ++
+	end
+end
+//[cf]
+//[of]:compareBytes
+//[c]Compares two memory blocks
+//[c]
+function compareBytes (dst: Pointer, src: Pointer, size: Size) : Int32
+
+	var p = src downcast (Bytes)
+	var q = dst downcast (Bytes)
+	var limit = q + size
+	while q < limit
+		// Extend with sign
+		if q [] <> p []
+			return q [] cast (Int32) - p [] cast (Int32)
+		end
+		p ++
+		q ++
+	end
+	return 0
+
+end
+//[cf]
+//[of]:areBytesEquals
+function areBytesEquals (dst: Pointer, src: Pointer, size: Size)
+	return compareBytes (dst, src, size) == 0
+end
+//[cf]
+//[cf]
+//[of]:Classes
+//[of]:Pointer
+extend Pointer
+//[of]:	basicDelete
+//[c]Releases the object and frees its allocated memory.
+//[c]
+//[c]This function should not be called directly, 'delete' should be called instead,
+//[c]but it can be useful when the delete is virtual and is overridden.
+//[c]
+function + basicDelete
+	self release
+	@self target free (self)
+end
+//[cf]
+//[of]:	delete
+//[c]Releases the object and frees its allocated memory.
+//[c]
+function + delete :
+	self basicDelete
+end
+//[cf]
+//[of]:	release
+function release
+	// empty
+end
+//[cf]
+end
+//[cf]
+
+//[of]:MemoryBuffer
+//[c]A resizable memory buffer
+//[c]
+struct MemoryBuffer
+	// Private
+	var buffer	: Bytes
+	var used	: Size
+	var bufferSize	: Size
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize
+	self buffer	= allocateBytes (defaultSize)
+	self used	= 0
+	self bufferSize	= defaultSize
+end
+//[cf]
+//[of]:release
+function release
+	freeBytes (self buffer, self bufferSize)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:base
+function base
+	return self buffer
+end
+//[cf]
+//[of]:size
+function size
+	return self used
+end
+//[cf]
+//[of]:[]
+//[c]Returns the byte at given index
+//[c]
+function _at (index: Integer)
+	return self buffer [index]
+end
+//[cf]
+//[of]:set
+//[c]Changes a value in the buffer
+//[c]
+//[c]PARAMETERS
+//[c]	offset	--	The offset in the buffer
+//[c]	x	--	A simple value
+//[c]
+//[c]REMARKS
+//[c]	The value can be an integer, character, pointer, enumeration, ...
+//[c]	it will be added to the buffer depending on the endianness of the
+//[c]	current host.
+//[c]
+function set (offset: Size, x)
+	((self buffer + offset) : * @x) [] = x
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:allocate
+//[c]Appends an uninitialized area
+//[c]
+//[c]	Use this function if you want to drop data yourself.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The number of bytes to allocate at the end of the buffer
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the memory block where the caller can write anything.
+//[c]	
+//[c]	This returned pointer is valid as long as no other addition is done
+//[c]	to the memory buffer. Otherwise, the memory block may have been
+//[c]	moved.
+//[c]
+function allocate (size: Size)
+	var p = self reserve (size)
+	self used += size
+	return p
+end
+//[cf]
+//[of]:<<
+//[c]Appends a simple value
+//[c]
+function _shl (x)
+	x addToMemoryBuffer (self)
+	return self
+end
+//[cf]
+//[of]:add
+//[c]Appends a simple value
+//[c]
+//[c]PARAMETERS
+//[c]	x	--	A simple value
+//[c]
+//[c]REMARKS
+//[c]	The value can be an integer, character, pointer, enumeration, ...
+//[c]	it will be added to the buffer depending on the endianness of the
+//[c]	current host.
+//[c]	
+function add (x)
+	var size = @x size
+	self reserve (size) cast (*@x) [] = x
+	self used += size
+end
+//[cf]
+//[of]:addByte
+function addByte (x: Byte)
+	self add (x)
+end
+//[cf]
+//[of]:addBlock
+//[c]Appends a memory block
+//[c]
+//[c]PARAMETERS
+//[c]	base	--	The base address of the memory block
+//[c]	size	--	The size of the memory block
+//[c]
+function addBlock (base: Pointer, size: Size)
+	copyBytes (self reserve (size), base, size)
+	self used += size
+end
+//[cf]
+//[of]:removeAll
+//[c]Remove all the content of the memory buffer
+//[c]
+//[c]REMARKS
+//[c]	The allocate memory is not freed.
+//[c]
+function removeAll
+	self used = 0
+end
+//[cf]
+//[of]:removeRange
+//[c]Removes a subsequence
+//[c]
+//[c]PARAMETERS
+//[c]	start	--	The offset of the first byte to remove
+//[c]	len	--	The number of bytes to remove
+//[c]
+//[c]REMARKS
+//[c]	The size of the memory buffer must be at least start+len.
+//[c]
+function removeRange (start: Size, len: Size)
+	var limit = start + len
+
+	// Move the end to overlap the range to be removed
+	moveBytes (self buffer + start, self buffer + limit, self used - limit)
+	
+	// Update the used chars
+	self used -= len
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const defaultSize = Size : 4096
+//[cf]
+//[of]:reserve
+//[c]Reserves a sufficient space
+//[c]
+function reserve (l: Size)
+
+	// We always must have one more char
+	if self used + l + 1 > self bufferSize
+		// Compute new size
+		var newSize = (self used + l + 1) * 5 / 4
+		
+		// Allocate new buffer
+		var q = allocateBytes (newSize) cast (Bytes)
+		
+		// Copy the old buffer into the new one
+		copyBytes (q, self buffer, self used)
+		
+		// Free the old buffer
+		freeBytes (self buffer, self bufferSize)
+		
+		// Update object
+		self bufferSize	= newSize
+		self buffer	= q
+	end
+
+	return self buffer + self used
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:MemoryPool
+//[c]A memory pool is a very fast memory allocator where all the allocated
+//[c]memory is freed at once.
+//[c]
+struct MemoryPool
+	// Private
+	var chunkBase	: Bytes	// The address of the current chunk
+	var chunkFree	: Bytes	// The pointer to the free bytes
+	var chunkSize	: Size	// The default size of chunks
+	var total	: Size	// The total size allocated by the pool (not including padding, headers, ...)
+
+//[of]:	initialize - release
+//[of]:initialize
+//[c]Initializes a memory pool
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	[optional] The number of bytes to pre-allocate and to 
+//[c]			allocate for each new chunk.
+//[c]
+//[c]REMARKS
+//[c]	The memory of a memory pool is pre-allocated in 'chunks':
+//[c]	when the current chunk is full a new one is allocated with the given
+//[c]	initial size or more if required.
+//[c]	
+function initialize
+	self initializeWithSize (defaultChunkSize)
+end
+//[cf]
+//[of]:initializeWithSize
+//[c]Initializes a memory pool
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The number of bytes to pre-allocate and to 
+//[c]			allocate for each new chunk.
+//[c]
+//[c]REMARKS
+//[c]	The memory of a memory pool is pre-allocated in 'chunks':
+//[c]	when the current chunk is full a new one is allocated with the given
+//[c]	initial size or more if required.
+//[c]	
+function initializeWithSize (size: Size)
+	self total	= 0
+	self chunkBase	= nil
+	self chunkSize	= size
+	
+	self newChunk (size)
+end
+//[cf]
+//[of]:release
+//[c]Releases the memory pool, all memory allocated by the pool is freed
+//[c]
+function release
+
+	var base = self chunkBase
+	while base notNil
+		var head	= (base - MemoryPoolHead size) cast (*MemoryPoolHead)
+		var next	= head next
+		freeBytes (head, head size + MemoryPoolHead size)
+		base = next
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:size
+//[c]Returns the number of allocated bytes (not including headers).
+//[c]This function is mainly for statistics.
+//[c]
+function size
+	return self total
+end
+//[cf]
+//[cf]
+//[of]:	allocating
+//[of]:new
+function new (T, ...)
+	var obj = self allocate (T)
+	obj initialize (...)
+	return obj
+end
+//[cf]
+//[of]:allocate
+//[c]Allocates a new memory block
+//[c]
+//[c]PARAMETERS
+//[c]	T	--	the type of the main structure
+//[c]	
+function allocate (T)
+	return self allocateBytes (T size) cast (*T)
+end
+//[cf]
+//[of]:allocateWithArray
+//[c]Allocates a new memory block.
+//[c]
+//[c]PARAMETERS
+//[c]	T	--	The type of the main structure.
+//[c]	C	--	The type of each item allocated at the end of the structure.
+//[c]	n	--	The number of C items.
+//[c]	
+function allocateWithArray (T, C, n: Index)
+	var bytes	= n cast (Size) * C size + T size
+	return self allocateBytes (bytes) cast (*T)
+end
+//[cf]
+//[of]:allocateArray
+//[c]Allocates a new memory block.
+//[c]
+//[c]PARAMETERS
+//[c]	T	--	The type of the cell.
+//[c]	n	--	The number of cells.
+//[c]
+function allocateArray (T, n: Index)
+	return self allocateBytes (n cast (Size) * T size) cast (*[] T)
+end
+//[cf]
+//[of]:allocateBytes
+//[c]Allocates a new memory block as 'Bytes' type.
+//[c]
+//[c]REMARKS
+//[c]	Allocating zero bytes is valid, return a non nil pointer and has
+//[c]	no overhead (no byte allocated).
+//[c]
+function allocateBytes (s: Size)
+	// Stats
+	self total += s
+	
+	// Align size on next round value
+	var align = Pointer size - 1
+	var size = (s + align) & not align
+
+	self chunkFree -= size
+	if self chunkFree >= self chunkBase
+		return self chunkFree
+	end
+	
+	self newChunk (max (size, self chunkSize))
+	self chunkFree -= size
+	return self chunkFree
+end
+//[cf]
+//[of]:reset
+//[c]Frees all memory allocated in the memory pool, but does not delete the pool.
+//[c]
+//[c]This function is useful to recycle a memory pool for another usage, it avoids
+//[c]calling the malloc and free methods.
+//[c]
+function reset
+	// 1 - Free all chunks but the last one
+	var h = (self chunkBase - MemoryPoolHead size) cast (*MemoryPoolHead)
+	var base = h next
+	while base notNil
+		var head	= (base  - MemoryPoolHead size) cast (*MemoryPoolHead)
+		var next	= head next
+		freeBytes (head, head size + MemoryPoolHead size)
+		base = next
+	end
+
+	// 2 - Reset the first chunk
+	self chunkFree	= self chunkBase + h size
+	h next	= nil
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const defaultChunkSize = Size : 256 * 1024
+//[cf]
+//[of]:newChunk
+//[c]Allocates a new chunk.
+//[c]
+function newChunk (size: Size)
+
+	var oldBase	= self chunkBase
+	var head	= allocateBytes (size + MemoryPoolHead size)
+	
+	self chunkBase	= head + MemoryPoolHead size
+	self chunkFree	= self chunkBase + size
+
+	var h = head cast (*MemoryPoolHead)
+	h next = oldBase
+	h size = size
+
+end
+//[cf]
+//[of]:MemoryPoolHead
+//[c]              base                        limit
+//[c] +------+------+----------------------------+
+//[c] | next | size |                            |
+//[c] +------+------+----------------------------+
+//[c]
+//[c]	next is a pointer on the next base
+//[c]	size is the size of the chunk
+//[c]
+static struct MemoryPoolHead
+	var next	: Bytes
+	var size	: Size
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[cf]
+//[cf]
+//[of]:Numbers
+//[of]:Aliases
+//[c]These aliases are just convenient names.
+//[c]
+//[c]Integer
+//[c]	An alias for the 32-bit signed integer.
+//[c]
+//[c]Uinteger
+//[c]	An alias for the 32-bit unsigned integer.
+//[c]
+//[c]Byte
+//[c]	An alias for the 8-bit unsigned integer.
+//[c]
+//[c]Index
+//[c]	An index is used to count and access items in vectors or arrays.
+//[c]	* The value is signed to allow relative indices.
+//[c]	* The value is 32 bits, so it is limited to 2.147.483.647 but it consumes 
+//[c]	less memory than the Size type on 64 bit platform.
+//[c]
+const Integer	= Int32	// Signed integer
+const Uinteger	= Uint32	// Unsigned integer
+const Byte	= Uint8	// Unsigned byte
+const Index	= Integer	// Indexed accesses
+//[cf]
+
+//[of]:Bool
+extend Bool
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb)
+	sb addString (self cond "true" else "false")
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Int8
+extend Int8
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self : Uint8
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value.
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Int8)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addInteger (self : Int32)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Int8)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Int16
+extend Int16
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self : Uint16
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value.
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Int16)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addInteger (self : Int32)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Int16)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Int32
+extend Int32
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self cast (Uint32)
+end
+//[cf]
+//[of]:hash
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Int32)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	operations
+//[of]:udiv
+//[c]Performs an unsigned division.
+//[c]
+//[c]REMARKS
+//[c]	The function is generic, it works with subtypes and it will returns the 
+//[c]	same type as the first argument.
+//[c]
+function + udiv (d: Int32)
+	return (self:Uint32 / d:Uint32) : @self
+end
+//[cf]
+//[of]:umod
+//[c]Performs an unsigned modulo.
+//[c]
+//[c]REMARKS
+//[c]	The function is generic, it works with subtypes and it will returns the 
+//[c]	same type as the first argument.
+//[c]
+function + umod (d: Int32)
+	return (self cast (Uint32) % d cast (Uint32)) cast (@self)
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addInteger (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Int32)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Int64
+extend Int64
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self cast (Uint64)
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value.
+//[c]
+function hash
+	return self cast (Hash)
+end
+//[cf]
+//[of]:low
+function low
+	return self : Uinteger
+end
+//[cf]
+//[of]:high
+function high
+	return (self >> 32) : Integer
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Int64)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addInteger64 (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Int64)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Uint8
+extend Uint8
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self : Int8
+end
+
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self : Uint8
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value.
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Uint8)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addUnsigned (self : Uint32)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Uint8)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Uint16
+extend Uint16
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self cast (Int16)
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value.
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Uint16)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addUnsigned (self : Uint32)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Uint16)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Uint32
+extend Uint32
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self cast (Int32)
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self cast (Uint32)
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to an hash value: just return self. This function is 
+//[c]useful with dictionary classes
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries
+//[c]
+function isEqual (other: Uint32)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	operations
+//[of]:smul
+//[c]Performs a signed multiplication
+//[c]
+function smul (other: Uint32)
+	return (self asSigned * other asSigned) asUnsigned
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addUnsigned (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Uint32)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Uint64
+extend Uint64
+//[of]:	accessing
+//[of]:asSigned
+function asSigned
+	return self cast (Int64)
+end
+//[cf]
+//[of]:asUnsigned
+function asUnsigned
+	return self
+end
+//[cf]
+//[of]:hash
+//[c]Converts the value to a hash value: returns the low 32-bits.
+//[c]
+function hash
+	return self : Hash
+end
+//[cf]
+//[of]:low
+function low
+	return self cast (Uint32)
+end
+//[cf]
+//[of]:high
+function high
+	return (self >> 32) cast (Uint32)
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Uint64)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	operations
+//[of]:smul
+//[c]Performs a signed multiplication
+//[c]
+function smul (other: Uint64)
+	return (self asSigned * other asSigned) asUnsigned
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (x)
+	x addUnsigned64 (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Uint64)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:Size
+extend Size
+//[of]:	accessing
+//[of]:hash
+//[c]Converts the size to a hash value: on 32-bit platform it will return self, on
+//[c]64-bit platform, it will return the lower 32-bits.
+//[c]
+function hash
+	return self
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:isEqual
+//[c]Returns true if values are equals. This function is useful with 
+//[c]dictionaries.
+//[c]
+function isEqual (other: Size)
+	return self == other
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates from zero to self - 1
+//[c]
+function + each
+	var i = @self : 0
+	while i < self
+		yield i
+		i ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb)
+	var n = @self size cast (Uint8) * 8
+	while n <> 0
+		n -= 8
+		var byte = (self >> n) cast (Byte)
+		sb addHexaByte (byte)
+	end
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+function has (mask: Size)
+	return (self & mask) <> 0
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[cf]
+//[of]:Text
+//[of]:Char
+//[c]A Char represents a valid Unicode character. Its value is the code point, 
+//[c]between 0 and 0x10FFFF
+//[c]
+stype Char : Uint32
+//[of]:	symbols
+'nul	= 0	// Null character
+'bel	= 7	// Bell
+'bs	= 8	// Backspace
+'tab	= 9	// Horizontal Tab
+'lf	= 10	// Line Feed
+'vt	= 11	// Vertical Tab
+'ff	= 12	// Form Feed
+'cr	= 13	// Carriage Return
+'sub	= 26	// Substitute
+'space	= 32	// White Space
+'del	= 127	// Delete
+//[cf]
+//[of]:	accessing
+//[of]:size
+//[c]Returns the number of code units to encode this char.
+//[c]
+// UTF-8
+function [unix] size : StringSize
+	return utf8Lengths[self] : StringSize + 1
+end
+
+// UTF-16
+function [windows] size : StringSize
+	if self < singleUnitLimit
+		return 1
+	else
+		return 2
+	end
+end
+//[cf]
+//[of]:hash
+//[c]Returns a hash code for the character.
+//[c]
+function hash
+	return self : Size
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:compareNoCase
+//[c]Compares two Unicode characters
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The other character
+//[c]
+//[c]RETURN VALUES
+//[c]	0	if the characters are equals
+//[c]	> 0	if self > other
+//[c]	< 0 if self < other
+//[c]
+function compareNoCase (other: Char)
+	return self toUpper toInteger - other toUpper toInteger
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toHexValue
+//[c]Converts the character to its hexa decimal value
+//[c]
+//[c]RETURN VALUES
+//[c]	$0 - $9	-- 0 to 9
+//[c]	$A - $F	-- 10 to 15
+//[c]	$a - $f	-- 10 to 15
+//[c]	other	-- 0
+//[c]
+function toHexValue
+	if self >= $0 and self <= $9
+		return (self - $0) toInteger
+	elsif self >= $A and self <= $F
+		return (self - ($A + 10)) toInteger
+	elsif self >= $a and self <= $f
+		return (self - ($a + 10)) toInteger
+	else
+		return 0
+	end
+end
+//[cf]
+//[of]:toLower
+//[c]Converts the character to lowercase.
+//[c]
+function toLower
+	if self < $A
+		return self
+	elsif self <= $Z
+		return self + ($a - $A)
+	elsif self == 0x9F
+		return self + 0x60	
+	elsif self < 0xC0 // iso8859-1
+		return self
+	elsif self < 0xD7
+		return self + 0x20
+	elsif self < 0xD8
+		return self
+	elsif self < 0xDF
+		return self + 0x20
+	elsif self < 0x400 // Capital Ukranian, Serbian, Byelorussian
+		return self
+	elsif self < 0x410
+		return self + 0x50
+	elsif self < 0x430 // Russian Capital Letters
+		return self + 0x20
+	else
+		return self
+	end
+end
+//[cf]
+//[of]:toUpper
+//[c]Converts the character to uppercase.
+//[c]
+function toUpper
+	if self < $a 
+		return self
+	elsif self <= $z
+		return self + ($A - $a)
+	elsif self == 0xFF
+		return self - 0x60
+	elsif self < 0xE0 // iso8859-1
+		return self
+	elsif self < 0xF7
+		return self - 0x20
+	elsif self < 0xF8
+		return self
+	elsif self < 0xFF
+		return self - 0x20
+	elsif self < 0x430 // Russian Lowercase Letters
+		return self
+	elsif self < 0x450
+		return self - 0x20
+	elsif self < 0x460 // Lowercase Ukranian, Serbian, Byelorussian
+		return self - 0x50
+	else
+		return self
+	end
+end
+//[cf]
+//[of]:toInteger
+//[c]Converts the character to its numerical value counterpart.
+//[c]
+function toInteger
+	return self cast (Integer)
+end
+//[cf]
+//[of]:toUnsigned
+//[c]Converts the character to its numerical value counterpart.
+//[c]
+function toUnsigned
+	return self : Uinteger
+end
+//[cf]
+//[of]:toCodeUnit
+//[c]Converts the character to a code unit. The caller must ensure that the 
+//[c]character is in the range [0, singleUnitLimit[.
+//[c]
+function toCodeUnit
+	return self cast (CodeUnit)
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb: *StringBuffer)
+	sb addChar (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isAlpha
+//[c]Returns true if the character is a letter ([a-zA-Z]).
+//[c]
+function isAlpha
+	return	(self >= $a and self <= $z) or
+		(self >= $A and self <= $Z)
+end
+//[cf]
+//[of]:isAlphaLower
+//[c]Returns true if the character is a lowercase letter ([a-z]).
+//[c]
+function isAlphaLower
+	return self >= $a and self <= $z
+end
+//[cf]
+//[of]:isAlphaUpper
+//[c]Returns true if the character is an uppercase letter ([A-Z]).
+//[c]
+function isAlphaUpper
+	return self >= $A and self <= $Z
+end
+//[cf]
+//[of]:isBlank
+//[c]Returns true if the character is a space (32) or tabulation (9)
+//[c]
+function isBlank
+	return self == 'space or self == 'tab
+end
+
+//[cf]
+//[of]:isDigit
+//[c]Returns true if the character is a digit ([0-9]).
+//[c]
+function isDigit
+	return self >= $0 and self <= $9
+end
+//[cf]
+//[of]:isHexDigit
+//[c]Returns true if the character is an hexadecimal digit ([0-9a-fA-F])
+//[c]
+function isHexDigit
+	return	self isDigit or 
+		(self >= $a and self <= $f) or
+		(self >= $A and self <= $F)
+end
+//[cf]
+//[of]:isNul
+//[c]Returns true if the character is the NUL control character (0).
+//[c]
+function isNul
+	return self == 'nul
+end
+//[cf]
+//[of]:notNul
+//[c]Returns true if the character is not the NUL control character (0).
+//[c]
+function notNul
+	return self <> 'nul
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:CodeUnit
+//[c]A CodeUnit is a UTF-8 or UTF-16 code unit depending on the target platform.
+//[c]
+//[c]When UTF-8, the lower half (0-127) corresponds the ASCII character-encoding 
+//[c]scheme and the higher half (128-255) is for heading, leading and continuation 
+//[c]code units.
+//[c]
+stype CodeUnit : CodeUnitBase
+//[of]:	symbols
+'nul	= 0	// Null character
+'bel	= 7	// Bell
+'bs	= 8	// Backspace
+'tab	= 9	// Horizontal Tab
+'lf	= 10	// Line Feed
+'vt	= 11	// Vertical Tab
+'ff	= 12	// Form Feed
+'cr	= 13	// Carriage Return
+'sub	= 26	// Substitute
+'space	= 32	// White Space
+'del	= 127	// Delete
+//[cf]
+//[of]:	accessing
+//[of]:hash
+//[c]Returns a hash code for the code unit.
+//[c]
+function hash
+	return self : Size
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toHexValue
+//[c]Converts the code unit to its hexa decimal value
+//[c]
+//[c]RETURN VALUES
+//[c]	$0 - $9	-- 0 to 9
+//[c]	$A - $F	-- 10 to 15
+//[c]	$a - $f	-- 10 to 15
+//[c]	other	-- 0
+//[c]
+function toHexValue : Integer
+	if self >= $0 and self <= $9
+		return (self - $0) toInteger
+	elsif self >= $A and self <= $F
+		return (self - ($A + 10)) toInteger
+	elsif self >= $a and self <= $f
+		return (self - ($a + 10)) toInteger
+	else
+		return 0
+	end
+end
+//[cf]
+//[of]:toLower
+//[c]Converts the code unit to lowercase.
+//[c]
+//[c]REMARKS
+//[c]	It applies only to an ASCII character, i.e. a code unit between 0 and 127.
+//[c]
+function toLower
+	if self >= $A and self <= $Z
+		return self + ($a - $A)
+	end
+	return self
+end
+//[cf]
+//[of]:toUpper
+//[c]Converts the code unit to uppercase.
+//[c]
+//[c]REMARKS
+//[c]	It applies only to an ASCII character, i.e. a code unit between 0 and 127.
+//[c]
+function toUpper
+	if self >= $a and self <= $z
+		return self + ($A - $a)
+	end
+	return self
+end
+
+//[cf]
+//[of]:toInteger
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toInteger
+	return self : Integer
+end
+//[cf]
+//[of]:toUnsigned
+//[c]Converts the code unit to its numerical value counterpart.
+//[c]
+function toUnsigned
+	return self : Uinteger
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+//[c]Adds a code unit to the string buffer.
+//[c]
+function addToStringBuffer (sb: *StringBuffer)
+	sb addCodeUnit (self)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isAlpha
+//[c]Returns true if the code unit is a letter ([a-zA-Z]).
+//[c]
+function isAlpha
+	return	(self >= $a and self <= $z) or
+		(self >= $A and self <= $Z)
+end
+//[cf]
+//[of]:isAlphaLower
+//[c]Returns true if the code unit is a lowercase letter ([a-z]).
+//[c]
+function isAlphaLower
+	return self >= $a and self <= $z
+end
+//[cf]
+//[of]:isAlphaUpper
+//[c]Returns true if the code unit is an uppercase letter ([A-Z]).
+//[c]
+function isAlphaUpper
+	return self >= $A and self <= $Z
+end
+//[cf]
+//[of]:isBlank
+//[c]Returns true if the code unit is a space (32) or tabulation (9)
+//[c]
+function isBlank
+	return self == 'space or self == 'tab
+end
+//[cf]
+//[of]:isContinuation
+//[c]Returns true if the code unit is a continuation byte. A continuation byte
+//[c]follow the pattern:
+//[c]	* 10xxxxxx
+//[c]
+// UTF-16
+function [windows] isContinuation
+	return (self & 0xFC00) == 0xDC00
+end
+
+// UTF-8
+function [unix] isContinuation
+	return (self & 0xC0) == 0x80
+end
+//[cf]
+//[of]:isDigit
+//[c]Returns true if the code unit is a digit ([0-9]).
+//[c]
+function isDigit
+	return self >= $0 and self <= $9
+end
+//[cf]
+//[of]:isHexDigit
+//[c]Returns true if the code unit is an hexadecimal digit ([0-9a-fA-F])
+//[c]
+function isHexDigit
+	return	self isDigit or 
+		(self >= $a and self <= $f) or
+		(self >= $A and self <= $F)
+end
+//[cf]
+//[of]:isNul
+//[c]Returns true if the code unit is the NUL control character (0).
+//[c]
+function isNul
+	return self == 'nul
+end
+//[cf]
+//[of]:notNul
+//[c]Returns true if the code unit is not the NUL control character (0).
+//[c]
+function notNul
+	return self <> 'nul
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:StringBuffer
+//[c]Buffer to manipulate strings.
+//[c]
+//[c]It is a resizable array of code units where it is possible to add, remove
+//[c]or replace any sequence of chars.
+//[c]
+//[c]As String and SubString types, the StringBuffer always assume that the 
+//[c]content and input arguments always contain valid encoded sequences and 
+//[c]never perform additional verifications.
+//[c]
+//[c]The class must be initialized before first use and released when exiting.
+//[c]
+struct StringBuffer
+	// Private
+	var buffer	: SubString	// The address of the buffer
+	var used	: StringSize	// The number of code units in use
+	var bufferSize	: StringSize	// The size of the buffer (number of allocated code units)
+
+//[of]:	class initialization
+meta function initialize
+	stringBufferTop	= stringBufferPool
+	stringBufferBottom	= stringBufferPool + poolSize
+	stringBufferCurrent	= stringBufferBottom
+end
+
+meta function release
+	var p = stringBufferCurrent
+	while p <> stringBufferBottom
+		var slot = p []
+		slot buffer delete (slot size)
+		p ++
+	end
+	// Disable the use of buffers, but StringBuffer still usable (for memory 
+	// leak reporting)
+	stringBufferCurrent = stringBufferBottom
+end
+//[cf]
+//[of]:	initialize - release
+//[of]:initialize
+//[c]Initializes a new string buffer. The buffer is initialized with a default size.
+//[c]
+function initialize
+	if stringBufferCurrent <> stringBufferBottom
+		// Use this slot
+		self buffer	= stringBufferCurrent [] buffer
+		self used	= 0
+		self bufferSize	= stringBufferCurrent [] size
+		stringBufferCurrent ++
+	else
+		self buffer	= SubString allocate (defaultSize)
+		self used	= 0
+		self bufferSize	= defaultSize
+	end
+end
+//[cf]
+//[of]:initializeWithSize
+//[c]Initializes a new string buffer with the initial given size.
+//[c]
+//[c]If the expected size is already known or approximatively known, it is better
+//[c]to initialize with a pre-allocated buffer big enough to avoid multiple 
+//[c]reallocations that could reduce performance.
+//[c]
+function initializeWithSize (initialSize: StringSize)
+
+	// Always allocate one more unit for two reasons
+	// 1. to put a nul terminator when the buffer is empty.
+	// 2. to prevent having a nul size buffer.
+	var n = initialSize + 1
+	
+	self buffer	= SubString allocate (n)
+	self used	= 0
+	self bufferSize	= n
+end
+//[cf]
+//[of]:release
+//[c]Release the buffer.
+//[c]
+//[c]The memory allocated by the buffer is freed.
+//[c]
+function release
+	if stringBufferCurrent <> stringBufferTop
+		// Move to this slot
+		stringBufferCurrent --
+		stringBufferCurrent [] buffer	= self buffer
+		stringBufferCurrent [] size	= self bufferSize
+	else
+		self buffer delete (self bufferSize)
+	end
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:[]
+function _at (i: Index)
+	return self base [i]
+end
+//[cf]
+//[of]:base
+//[c]Returns the base address of the buffer
+//[c]
+function base
+	return self buffer
+end
+//[cf]
+//[of]:hash
+//[c]Computes and returns the hash code of the buffer.
+//[c]
+function hash
+	return self base hash (self size)
+end
+//[cf]
+//[of]:size
+//[c]Returns the number of code units in the buffer
+//[c]
+function size
+	return self used
+end
+//[cf]
+//[of]:first
+//[c]Returns the first code unit of the buffer. The buffer must not be empty.
+//[c]
+function first
+	return self base [0]
+end
+//[cf]
+//[of]:last
+//[c]Returns the last code unit of the buffer. The buffer must not be empty.
+//[c]
+function last
+	return self base [self used - 1]
+end
+//[cf]
+//[of]:firstChar
+function firstChar
+	var c, p = self base nextChar
+	return c
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:<<
+//[c]Adds a value to the string buffer. The operation depends on the type of the 
+//[c]value.
+//[c]
+//[c]Any object can implement a custom addToStringBuffer function to be serialized.
+//[c]
+function _shl (obj)
+	obj addToStringBuffer (self)
+	return self
+end
+//[cf]
+//[of]:printFormat
+//[c]Prints a formatted with arguments
+//[c]
+//[c]PARAMETERS
+//[c]	s	--	The template string.
+//[c]	...	--	The arguments to apply to the template.
+//[c]
+//[c]REMARKS
+//[c]	It is the same function as addFormat, except that the buffer is emptied 
+//[c]	first. See addFormat for more information.
+//[c]
+function printFormat (s: String, ...)
+	self removeAll
+	self addFormat (s, ...)
+end
+//[cf]
+//[of]:addFormat
+//[c]Adds a formated string using a template + arguments.
+//[c]
+//[c]PARAMETERS
+//[c]	s	--	The template string.
+//[c]	...	--	The arguments to apply to the template.
+//[c]
+//[c]REMARKS
+//[c]	The template must include the special character '\a' as a placeholder
+//[c]	for the parameters. e.g.:
+//[c]		var name = String "John"
+//[c]		buffer printFormat ("hello \a.", name)
+//[c]	will fill the buffer with:
+//[c]		"hello John."
+//[c]
+//[c]	The arguments can be of any type that implement	a addToStringBuffer(buffer)
+//[c]	function.
+//[c]
+function addFormat (s: String, ...)
+	var p = self addSegment (s)
+	vargs_each do arg
+		self << arg
+		p = self addSegment (p)
+	end
+end
+
+function addSegment (s: String)
+	var p	= s
+	repeat 
+		var c = p []
+		if c isNul
+			return p
+		end
+		p ++
+		if c == 'bel // "\a"
+			return p
+		end
+		self reserve (1) [] = c
+		self used ++
+	end
+end
+//[cf]
+
+//[of]:addChar7
+//[c]Appends a single ASCII character to the buffer.
+//[c]
+//[c]REMARKS
+//[c]	As the encoding of non-ASCII characters is unspecified, the value is
+//[c]	converted to a question mark for characters from 128 to 255.
+//[c]
+function addChar7 (c: Uint8)
+	var u = c < 128 cond c cast (CodeUnit) else CodeUnit : $?
+	self reserve (1) [] = u
+	self used ++
+end
+//[cf]
+//[of]:addChar
+//[c]Appends a single Unicode character.
+//[c]
+function addChar (c: Char)
+	var p = self reserve (maxCharSize)
+	var n = p writeChar (c)
+	self used += n
+end
+//[cf]
+//[of]:addCodeUnit
+//[c]Adds a code unit to the string buffer. The code unit must be a single unit:
+//[c]* UTF-8: it must be in the [0, 0x7F] range
+//[c]* UTF-16: it must be in the [0, 0xD7FF] U [0xE000, 0xFFFF] range
+//[c]
+//[c]It is acceptable to add other code units but you must ensure to always
+//[c]keep a valid encoded buffer.
+//[c]
+function addCodeUnit (u: CodeUnit)
+	self reserve (1) [] = u
+	self used ++
+end
+//[cf]
+//[of]:addString
+//[c]Appends a string to the buffer.
+//[c]
+function addString (str: String)
+	self addSubString (str, str size)
+end
+//[cf]
+//[of]:addSubString
+//[c]Appends a sub-string to the buffer.
+//[c]
+function addSubString (	str	: SubString, 
+	size	: StringSize)
+
+	self reserve (size) copy (str, size)
+	self used += size
+
+end
+//[cf]
+//[of]:addUnsigned
+//[c]Appends an unsigned integer in decimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	n	--	The unsigned integer to append to the buffer.
+//[c]
+function addUnsigned (n: Uinteger)
+	var i	= n
+	var buf	: [12] CodeUnit
+	var limit = buf downcast (SubString) + 12
+	var p	= limit
+	if i == 0
+		p --
+		p [] = $0
+	else
+		while i <> 0
+			p --
+			p [] = (i % 10) cast (CodeUnit) + $0
+			i /= 10
+		end
+	end
+	self addSubString (p, limit ~ p)
+end
+//[cf]
+//[of]:addInteger
+//[c]Appends an integer in decimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	n	--	The integer to append to the buffer
+//[c]
+function addInteger (n: Integer)
+	var i = n
+	if i < 0
+		self addChar7 ($-)
+		i = - i
+	end
+	self addUnsigned (i asUnsigned)
+end
+//[cf]
+//[of]:addUnsigned64
+//[c]Appends an unsigned integer in decimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	n	--	The unsigned integer to append to the buffer.
+//[c]
+function addUnsigned64 (n: Uint64)
+	var i = n
+	var buf	: [22] CodeUnit
+	var limit = buf downcast (SubString) + 22
+	var p	= limit
+	if i == 0
+		p --
+		p [] = $0
+	else
+		while i <> 0
+			p --
+			p [] = (i % 10) cast (CodeUnit) + $0
+			i /= 10
+		end
+	end
+	self addSubString (p, limit ~ p)
+end
+//[cf]
+//[of]:addInteger64
+//[c]Appends an integer in decimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	n	--	The integer to append to the buffer
+//[c]
+function addInteger64 (n: Int64)
+	var i = n
+	if i < 0
+		self addChar7 ($-)
+		i = - i
+	end
+	self addUnsigned64 (i asUnsigned)
+end
+//[cf]
+
+//[of]:addHexa
+//[c]Appends an integer in hexadecimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	n	--	The integer to append to the buffer.
+//[c]
+function addHexa (n: Uinteger)
+	var i	= n
+	var buf	: [8] CodeUnit
+	var limit	= buf : SubString + 8
+	var p	= limit
+	if i == 0
+		p --
+		p [] = $0
+	else
+		while i <> 0
+			p --
+			var r = (i & 15) : CodeUnit
+			if r < 10
+				p [] = r + $0
+			else
+				p [] = r + ($A - 10)
+			end
+			i >>= 4
+		end
+	end
+	self addSubString (p, limit ~ p)
+end
+//[cf]
+//[of]:addHexaByte
+//[c]Appends a byte in 2-digit hexadecimal format to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	byte	--	The byte to append to the buffer.
+//[c]
+function addHexaByte (byte: Byte)
+	var n	= byte
+
+	var hi	= (n >> 4) & 15
+	hi += (hi < 10) cond $0 else ($A - 10)
+	self addChar7 (hi)
+
+	var lo	= n & 15
+	lo += (lo < 10) cond $0 else ($A - 10)
+	self addChar7 (lo)
+end
+//[cf]
+//[of]:addUpper
+//[c]Appends a sub-string in uppercase to the buffer.
+//[c]
+function addUpper (str: SubString, size: StringSize)
+	str eachChar (size) do c
+		self << c toUpper
+	end
+end
+//[cf]
+//[of]:addLower
+//[c]Appends a sub-string in lowercase to the buffer.
+//[c]
+function addLower (str: SubString, size: StringSize)
+	str eachChar (size) do c
+		self << c toLower
+	end
+end
+//[cf]
+//[of]:addRoom
+//[c]Appends an unitialized area to the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The number of code units to reserve.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the allocated space.
+//[c]	
+//[c]REMARKS
+//[c]	Use this function if to drop any text directly into the buffer (e.g. from
+//[c]	an external API).
+//[c]	
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]	
+//[c]	The size of the buffer is updated exactly as if the data was already
+//[c]	inserted.
+//[c]
+function addRoom (size: StringSize)
+	var p = self reserve (size)
+	self used += size
+	return p
+end
+//[cf]
+
+//[of]:removeAll
+//[c]Removes the content of the buffer.
+//[c]
+//[c]REMARKS
+//[c]	The buffer is not freed in order to optimize the recycling.
+//[c]
+function removeAll
+	self used = 0
+end
+//[cf]
+//[of]:removeRange
+//[c]Removes a sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	start	--	The offset of the first code unit to remove.
+//[c]	size	--	The number of code units to remove.
+//[c]
+//[c]REMARKS
+//[c]	The function does not check the validity of the parameters, any invalid
+//[c]	argument will result in an undefined behavior.
+//[c]
+function removeRange (start: StringSize, size: StringSize)
+	var limit = start + size
+
+	// move the end to overlap the range to be removed
+	(self buffer + start) move (self buffer + limit, self used - limit)
+	
+	// update the used chars
+	self used -= size
+end
+//[cf]
+//[of]:removeLastChar
+//[c]Removes the last character of the buffer.
+//[c]
+//[c]REMARKS
+//[c]	The buffer must contain at least one character, the function does not
+//[c]	perform any verification.
+//[c]
+function removeLastChar
+	var p = self base
+	var i = self used
+	repeat
+		i --
+		if not p [i] isContinuation
+			break
+		end
+	end
+	self used = i
+end
+//[cf]
+//[of]:removeFrom
+//[c]Removes all characters of the buffer after start
+//[c]
+//[c]PARAMETERS
+//[c]	start	--	The offset of the first character to remove.
+//[c]
+function removeFrom (start: StringSize)
+	self used = start
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:compare
+//[c]Compares two buffers.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	the buffer to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if the sub-strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compare (other: *StringBuffer) : Integer
+	return self buffer compare (self used, other buffer, other used)
+end
+//[cf]
+//[of]:compareNoCase
+//[c]Compares two buffer in case insensitive mode.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	the buffer to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compareNoCase (other: *StringBuffer) : Integer
+	return self buffer compareNoCase (self used, other buffer, other used)
+end
+//[cf]
+//[of]:isEqual
+//[c]Tests if two buffers are equals
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The buffer to compare with.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the two buffers are equals.
+//[c]
+function isEqual (other: *StringBuffer)
+	return self buffer isEqual (self used, other buffer, other used)
+end
+//[cf]
+//[of]:isEqualNoCase
+//[c]Tests if two buffer are equals (case insensitive comparison)
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The buffer to compare with.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the two buffers are equals.
+//[c]
+function isEqualNoCase (other: *StringBuffer)
+	return self buffer isEqualNoCase (self used, other buffer, other used)
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toString
+//[c]Creates a new string from the content of the string buffer.
+//[c]
+function toString
+	return self string getCopy
+end
+//[cf]
+//[of]:string
+//[c]Returns the content of the buffer as a string.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the string.
+//[c]	
+//[c]REMARKS
+//[c]	A nul character is added at the end of the buffer to make it a valid
+//[c]	string.
+//[c]	
+//[c]	The returned string is valid as long as the buffer is not modified,
+//[c]	any call to an add or remove function may invalidate the buffer.
+//[c]
+function string
+	var p = self buffer
+	p [self used] = 'nul
+	return p asString
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachChar
+//[c]Enumerates each character of the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	block(Char)	-- The routine to process each unicode character of the string.
+//[c]
+function eachChar
+	self buffer eachChar (self used) do c
+		yield c
+	end
+end
+//[cf]
+//[of]:eachCodeUnit
+//[c]Enumerates each code unit of the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	block(CodeUnit)	-- The routine to process each byte of the string.
+//[c]
+function eachCodeUnit
+	var p = self buffer
+	var limit = p + self used
+	while p <> limit
+		yield p []
+		p ++
+	end
+end
+
+//[cf]
+//[of]:eachLine
+//[c]Enumerates each line of the buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	block(	SubString, 
+//[c]		StringSize)	--	The routine to process each line of the buffer.
+//[c]				The first parameter is the pointer to the beginning of the line, 
+//[c]				the second parameter is the size of the line.
+//[c]
+function eachLine
+	self buffer eachLine (self used) do line, size
+		yield line, size
+	end
+end
+//[cf]
+//[cf]
+//[of]:	searching
+//[of]:findChar
+//[c]Returns the first occurrence of a character in the buffer, nil if not found.
+//[c]
+function findChar (c: Char)
+	return self buffer findChar (self used, c)
+end
+//[cf]
+//[of]:findCodeUnit
+//[c]Returns the first occurrence of a character in the buffer, nil if not found.
+//[c]
+function findCodeUnit (c: CodeUnit)
+	return self buffer findCodeUnit (self used, c)
+end
+//[cf]
+//[of]:findString
+//[c]Returns the first occurrence of a string in the buffer, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]	
+function findString (substr: String)
+	return self buffer findString (self used, substr)
+end
+//[cf]
+//[of]:findSubString
+//[c]Returns the first occurrence of a sub-string in the buffer, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self buffer findSubString (self used, substr, substrSize)
+end
+//[cf]
+
+//[of]:findLastChar
+//[c]Returns the last occurrence of a char in the buffer, nil if not found.
+//[c]
+function findLastChar (c: Char)
+	return self buffer findLastChar (self used, c)
+end
+//[cf]
+//[of]:findLastCodeUnit
+//[c]Returns the last occurrence of a char in the buffer, nil if not found.
+//[c]
+function findLastCodeUnit (c: CodeUnit)
+	return self buffer findLastCodeUnit (self used, c)
+end
+//[cf]
+//[of]:findLastString
+//[c]Returns the last occurrence of a sub-string in the buffer, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]	
+function findLastString (substr: String)
+	return self buffer findLastString (self used, substr)
+end
+//[cf]
+//[of]:findLastSubString
+//[c]Returns the last occurrence of a sub-string in the buffer, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string to find.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findLastSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self buffer findLastSubString (self used, substr, substrSize)
+end
+//[cf]
+
+//[of]:skipBlanks
+//[c]Returns a pointer to the first non-blank character in the buffer.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipBlanks
+	return self buffer skipBlanks (self used)
+end
+//[cf]
+//[of]:skipNonBlanks
+//[c]Returns a pointer to the first blank character in the buffer.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipNonBlanks
+	return self buffer skipNonBlanks (self used)
+end
+//[cf]
+//[of]:findEndOfLine
+//[c]Returns a pointer to the end of the line.
+//[c]
+//[c]RETURN VALUE
+//[c]	A pointer to the end of line, i.e. the first CR or LF character. If there 
+//[c]	is no CR or LF, the pointer to the end of string is returned.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function findEndOfLine
+	return self buffer findEndOfLine (self used)
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isEmpty
+//[c]Returns true if the buffer is empty.
+//[c]
+function isEmpty
+	return self size == 0
+end
+//[cf]
+
+//[of]:startsWithChar
+//[c]Tests if the buffer starts with a given character.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The Unicode character.
+//[c]
+function startsWithChar (c: Char)
+	return self buffer startsWithChar (self used, c)
+end
+//[cf]
+//[of]:startsWithString
+//[c]Returns true if the buffer starts with the given prefix.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The prefix.
+//[c]
+function startsWithString (substr: String)
+	return self buffer startsWithString (self used, substr)
+end
+//[cf]
+//[of]:startsWithSubString
+//[c]Returns true if the buffer starts with the given prefix.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The prefix
+//[c]	substrSize	--	The size of the prefix
+//[c]
+function startsWithSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self buffer startsWithSubString (self used, substr, substrSize)
+end
+//[cf]
+
+//[of]:endsWithChar
+//[c]Returns true if the last character of the buffer is the given one.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The Unicode character
+//[c]
+function endsWithChar (c: Char)
+	return self buffer endsWithChar (self used, c)
+end
+//[cf]
+//[of]:endsWithString
+//[c]Returns true if the buffer ends with the given string.
+//[c]
+function endsWithString (str: String)
+	return self buffer endsWithString (self used, str)
+end
+//[cf]
+//[of]:endsWithSubString
+//[c]Returns true if the buffer ends with the given suffix.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The suffix.
+//[c]	substrSize	--	The size of the suffix.
+//[c]
+function endsWithSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self buffer endsWithSubString (self used, substr, substrSize)
+end
+//[cf]
+
+//[of]:containsChar
+//[c]Returns true if the buffer contains the given character.
+//[c]
+function containsChar (c: Char)
+	return self findChar (c) notNil
+end
+//[cf]
+//[of]:containsString
+//[c]Returns true if the buffer contains the given string.
+//[c]
+function containsString (substr: String)
+	return self findString (substr) notNil
+end
+//[cf]
+//[of]:containsSubString
+//[c]Returns true if the buffer contains the given sub-string.
+//[c]
+function containsSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self findSubString (substr, substrSize) notNil
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+//[c]Appends the buffer to another buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	x	--	The other buffer.
+//[c]
+function addToStringBuffer (x)
+	x addSubString (self base, self size)
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+// The default allocated size of a buffer
+static const defaultSize = StringSize : 1024
+
+// The number of string buffers kept in memory. It can reduces drastically
+// the number of memory allocations.
+static const poolSize	= Size : 4
+
+static var stringBufferPool	: [poolSize] Slot
+static var stringBufferTop	: *[] Slot
+static var stringBufferBottom	: *[] Slot
+static var stringBufferCurrent	: *[] Slot
+
+// Structure to saves the memory allocated by string buffers.
+static struct Slot
+	var buffer	: SubString
+	var size	: StringSize
+end
+//[cf]
+//[of]:reserve
+//[c]Reserves a sufficient space. When returning, the buffer will have at least
+//[c]the required number of characters available.
+//[c]
+//[c]PARAMETERS
+//[c]	l	--	The number of code units to reserve on the buffer.
+//[c]
+function reserve (l: StringSize)
+	// We always must have one more character
+	if self used + l + 1 > self bufferSize
+		// Compute new size
+		var newSize = (self used + l + 1) * 5 / 4
+		
+		// Allocate new buffer
+		var q = SubString allocate (newSize)
+		
+		// Copy the old buffer into the new one
+		q copy (self buffer, self used)
+		
+		// Free the old buffer
+		self buffer delete (self bufferSize)
+		
+		// Update object
+		self bufferSize	= newSize
+		self buffer	= q
+	end
+	return self buffer + self used
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:String
+//[c]A String is a string of UTF-8/16 encoded characters, nul terminated.
+//[c]
+//[c]IMPORTANT: This type is reserved to correctly encoded strings, it must 
+//[c]not be used with incorrect UTF-8/16 sequence as it could lead to undefined 
+//[c]behavior.
+//[c]
+//[c]The sizes and offsets of a String are expressed with the StringSize.
+//[c]It is a 32 bit signed integer, so it is limited to 2GBs.
+//[c]	
+stype String : SubString
+//[of]:	instance creation
+//[of]:allocate
+//[c]Allocates an array of 'size' code units elements with the type of 'String'.
+//[c]
+meta function allocate (size: StringSize)
+	return allocateBytes (size toByteSize) cast (String)
+end
+//[cf]
+//[of]:format
+//[c]Creates a new string with the format string and arguments.
+//[c]
+meta function format (fmt: String, ...)
+	var buf : StringBuffer
+	buf initialize
+	buf addFormat (fmt, ...)
+	var res = buf toString
+	buf release
+	return res
+end
+//[cf]
+//[of]:fromSubString
+//[c]Create a new string from a sub-string
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	the size of the sub-string.
+//[c]
+//[c]REMARKS
+//[c]	The size is assumed to be less or equal than the size of the string.
+//[c]	The returned string must freed with 'delete'.
+//[c]
+meta function fromSubString (sub: SubString, size: StringSize)
+	var buf	= String allocate (size + 1)
+	buf asSubString copy (sub, size)
+	buf [size] = 'nul
+	return buf
+end
+//[cf]
+//[cf]
+//[of]:	symbols
+'empty	= ""	// The empty string
+'newLine	= newLineString	// The new line sequence (LF or CR+LF depending on the platform)
+//[cf]
+//[of]:	initialize - release
+//[of]:delete
+//[c]Deletes a string.
+//[c]
+//[c]REMARKS
+//[c]	Deleting the global empty string has no effect.
+//[c]
+function delete
+	// As the builtin empty string is never copied (see getCopy), the
+	// delete can be invoked on this string, so it must be ignored.
+	if self == 'empty
+		return
+	end
+
+	self deleteWithSize (self size + 1)
+end
+//[cf]
+//[of]:deleteWithSize
+//[c]Deletes a string where the size is already known.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The number of code units, including the NUL terminator.
+//[c]	
+//[c]REMARKS
+//[c]	This function avoid to compute the size of the string if it is already 
+//[c]	known.
+//[c]
+function deleteWithSize (size: StringSize)
+	// Free the old buffer
+	freeBytes (self, size toByteSize)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:asSubString
+//[c]Returns the string as a sub-string.
+//[c]
+function asSubString
+	return self upcast (SubString)
+end
+
+//[cf]
+
+//[of]:hash
+//[c]Computes and returns the hash code of the string.
+//[c]
+//[c]REMARKS
+//[c]	the hash of the string is always the same as the hash of the equivalent 
+//[c]	sub-string.
+//[c]
+function hash
+	var p = self
+	var sum = Size : 0xA5A5A5A5
+	repeat
+		var c = p []
+		p ++
+		if c isNul
+			break
+		end
+		sum = (sum >> 1) + (c hash << hashShift)
+	end
+	return sum
+end
+//[cf]
+//[of]:size
+//[c]Computes and returns the number of bytes of the string.
+//[c]
+function size
+	var p = self
+	while p [] notNul
+		p ++
+	end
+	return p ~ self
+end
+//[cf]
+//[of]:~
+//[c]Returns the number of code units from 'other' to 'self'. 
+//[c]
+//[c]It is just the difference 'other - self' but as a StringSize type.
+//[c]
+function _dist (other: String)
+	return (self super ~ other) cast (StringSize)
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:compare
+//[c]Compares two strings.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	the string to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compare (other: String) : Integer
+	var p1	= self
+	var p2	= other
+	repeat
+		var c = p1 []
+		var d = p2 []
+		if c <> d
+			// Return difference if different
+			return c toInteger - d toInteger
+		elsif c isNul
+			// Both are equals and nul: equality
+			return 0	
+		end
+		p1 ++
+		p2 ++
+	end
+end
+//[cf]
+//[of]:compareNoCase
+//[c]Compares two strings in case insensitive mode.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	the string to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compareNoCase (other: String)
+	var p1 = self
+	var p2 = other
+	repeat
+		var c1, n1 = p1 nextChar
+		p1 += n1
+		var c2, n2 = p2 nextChar
+		p2 += n2
+		var d = c1 compareNoCase (c2)
+		if d <> 0 or c1 isNul
+			return d
+		end
+	end
+end
+//[cf]
+//[of]:isEqual
+//[c]Tests if the two strings are equals.
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The string to compare.
+//[c]
+function isEqual (other: String)
+	var p1 = self
+	var p2 = other
+	repeat
+		var c = p1 []
+		var d = p2 []
+		if c <> d
+			return false
+		elsif c isNul
+			return true 
+		end
+		p1 ++
+		p2 ++
+	end
+end
+//[cf]
+//[of]:isEqualNoCase
+//[c]Tests if the two strings are equals (case insensitive comparison).
+//[c]
+//[c]PARAMETERS
+//[c]	other	--	The string to compare.
+//[c]
+function isEqualNoCase (other: String)
+	return self compareNoCase (other) == 0
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toUpper
+//[c]Returns a copy of this string with all lowercase letters converted to uppercase.
+//[c]
+function toUpper
+	return self asSubString toUpper (self size)
+end
+//[cf]
+//[of]:toLower
+//[c]Returns a copy of this string with all uppercase letters converted to lowercase.
+//[c]
+function toLower
+	return self asSubString toLower (self size)
+end
+//[cf]
+//[cf]
+//[of]:	copying
+//[of]:getCopy
+//[c]Returns a copy of the string.
+//[c]
+function getCopy
+	// Optimization: the builtin empty string is never copied (and never 
+	// deleted). It is very useful as strings in structure are often 
+	// initialized with an empty string.
+	if self == 'empty
+		return self
+	end
+	
+	var n	= self size + 1
+	var buf	= String allocate (n)
+	copyBytes (buf, self, n toByteSize)
+	return buf
+end
+//[cf]
+//[of]:getCopyTo
+//[c]Returns a copy of the beginning of string.
+//[c]
+//[c]PARAMETERS
+//[c]	limit	--	The pointer the the last code unit + 1.
+//[c]
+//[c]RETURN VALUES
+//[c]	A newly allocated string on the heap.
+//[c]
+function getCopyTo (limit: String)
+	return String fromSubString (self, limit ~ self)
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachChar
+//[c]Enumerates each character of the string.
+//[c]
+//[c]PARAMETERS
+//[c]	block(Char)	-- The routine to process each unicode character of the string.
+//[c]
+function eachChar
+	var p = self
+	repeat
+		var c, n = p nextChar
+		p += n
+		if c isNul
+			break
+		end
+		yield c
+	end
+end
+//[cf]
+//[of]:eachCodeUnit
+//[c]Enumerates each byte of the string.
+//[c]
+//[c]PARAMETERS
+//[c]	block(CodeUnit)	-- The routine to process each code unit of the string.
+//[c]
+function eachCodeUnit
+	var p = self
+	while p [] notNul
+		yield p []
+		p ++
+	end
+end
+//[cf]
+//[of]:eachLine
+//[c]Enumerates each line of the string.
+//[c]
+//[c]PARAMETERS
+//[c]	block(SubString, StringSize)	--	a routine to process each line of the string.
+//[c]
+function eachLine
+	var p = self
+	repeat
+		var start = p
+		p = p findEndOfLine
+		yield start asSubString, p ~ start
+
+		// Read again the byte (in order to avoid a live variable during the yield)
+		var c = p []
+		if c == 'nul
+			break
+		elsif c == 'cr
+			// Skip CR + optional LF
+			p ++
+			if p [] == 'lf
+				p ++
+			end
+		else // 'lf
+			// Skip LF
+			p ++
+		end
+	end
+end
+//[cf]
+//[cf]
+//[of]:	numerical conversion
+//[of]:hexaToUnsigned
+//[c]Converts an hexadecimal string to an unsigned 32 bit integer.
+//[c]
+//[c]RETURN VALUES
+//[c]	value	--	The unsigned integer corresponding to the hexadecimal formatted value.
+//[c]	ptr	--	The pointer to the first code unit that is not an hexadecimal digit.
+//[c]
+function hexaToUnsigned
+	var value = Uinteger : 0
+	var q = self
+	repeat
+		var c = q []
+		if c >= $0 and c < $9 + 1
+			value <<= 4
+			value += (c - $0) toUnsigned
+		elsif  c >= $a and c < $f + 1
+			value <<= 4
+			value += (c - $a + 10) toUnsigned
+		elsif c >= $A and c < $F + 1
+			value <<= 4
+			value += (c - $A + 10) toUnsigned
+		else
+			break
+		end
+		q ++
+	end
+	return value, q
+end
+//[cf]
+//[of]:hexaToInteger
+//[c]Converts an hexadecimal string to a 32 bit signed integer.
+//[c]
+//[c]RETURN VALUES
+//[c]	value	--	The integer corresponding to the hexadecimal formatted value.
+//[c]	ptr	--	The pointer to the first code unit that is not an hexadecimal digit.
+//[c]
+function hexaToInteger
+	var value, endptr = self hexaToUnsigned
+	return value : Integer, endptr
+end
+//[cf]
+//[of]:decimalToUnsigned
+//[c]Converts a decimal string to an integer.
+//[c]
+//[c]RETURN VALUES
+//[c]	value	--	The unsigned integer corresponding to the decimal formatted value.
+//[c]	ptr	--	The pointer to the first code unit that is not a decimal digit.
+//[c]
+function decimalToUnsigned
+	var p = self
+	var value = Uinteger : 0
+	var base = Uinteger : 10
+	if p [0] == $0
+		if p [1] == $x or p [1] == $X
+			p += 2
+			base = 16
+		end
+	end
+
+	repeat
+		var c = p []
+		if c isNul
+			break
+		elsif c >= $a
+			c -= $a - 10
+		elsif c >= $A
+			c -= $A - 10
+		elsif c <= $9
+			c -= $0
+		else
+			c = 255
+		end
+		var n = c toUnsigned
+		if n > base
+			break
+		end
+		value *= base
+		value += n
+		p ++
+	end
+	
+	return value, p
+end
+//[cf]
+//[of]:decimalToInteger
+//[c]Converts the string to a 32 bit signed integer
+//[c]
+//[c]RETURN VALUES
+//[c]	value	--	The integer corresponding to the decimal formatted value.
+//[c]	ptr	--	The pointer to the first code unit that is not a decimal digit.
+//[c]
+function decimalToInteger
+	var p = self
+	var c	= p []
+	var neg = false
+	if c == $-
+		neg = true
+		p ++
+	elsif c == $+
+		p ++
+	end
+	var unsigned, endptr = p decimalToUnsigned
+	var value = unsigned asSigned
+	if neg
+		value = -value
+	end
+	return value, endptr
+end
+//[cf]
+//[cf]
+//[of]:	output
+//[of]:addToStringBuffer
+//[c]Adds self to the string buffer. 
+//[c]
+//[c]REMARKS
+//[c]	This function usually invoked by the implementation of "x << self" in 
+//[c]	order to allow double dispatching. 
+//[c]	
+//[c]	X must implement a addString function.
+//[c]
+function addToStringBuffer (x)
+	x addString (self)
+end
+//[cf]
+//[cf]
+//[of]:	searching
+//[of]:findChar
+//[c]Returns the first occurrence of a character, nil if not found.
+//[c]
+function findChar (c: Char)
+	if c < singleUnitLimit
+		// The Unicode char is an ASCII char, use the fast scan
+		var p = self
+		var b = c toCodeUnit // Truncate the char
+		repeat
+			var d = p []
+			if d isNul
+				return nil
+			elsif d == b
+				return p 
+			end
+			p ++
+		end
+	else
+		// The Unicode char is not an ASCII char, it is encoded in multiple 
+		// bytes so it must be encoded in a string an seached with the search
+		// string function.
+		var buf : CodeUnitBuffer
+		return self findSubString (toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:findCodeUnit
+//[c]Returns the first occurrence of a character, nil if not found.
+//[c]
+function findCodeUnit (c: CodeUnit)
+	var p = self
+	repeat
+		var d = p []
+		if d isNul
+			return nil
+		elsif d == c
+			return p 
+		end
+		p ++
+	end
+end
+//[cf]
+//[of]:findString
+//[c]Returns the first occurrence of a substring, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]	
+function findString (substr: String)
+	return self findSubString (substr, substr size)
+end
+//[cf]
+//[of]:findSubString
+//[c]Returns the first occurrence of a sub-string, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	var p = self
+	var q = substr
+	var c = p []
+	var d = q []
+	p ++
+	q ++
+	var size = (substrSize - 1) toByteSize
+	while c notNul
+		if c == d and areBytesEquals (p, q, size)
+			return p - 1
+		end
+		c = p []
+		p ++
+	end
+	
+	// Not found
+	return nil
+end
+//[cf]
+
+//[of]:findLastChar
+//[c]Returns the last occurrence of a character, nil if not found.
+//[c]
+function findLastChar (c: Char)
+	return self asSubString findLastChar (self size, c) : String
+end
+//[cf]
+//[of]:findLastCodeUnit
+//[c]Returns the last occurrence of a character, nil if not found.
+//[c]
+function findLastCodeUnit (c: CodeUnit)
+	return self asSubString findLastCodeUnit (self size, c) downcast (String)
+end
+//[cf]
+//[of]:findLastString
+//[c]Returns the last occurrence of a string, nil if not found
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]	
+function findLastString (substr: String)
+	return self findLastSubString (substr, substr size)
+end
+//[cf]
+//[of]:findLastSubString
+//[c]Returns the last occurrence of a substring, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]	
+function findLastSubString (substr: SubString, substrSize: StringSize)
+	return self asSubString findLastSubString (self size, substr, substrSize) : String
+end
+//[cf]
+
+//[of]:skipBlanks
+//[c]Returns a pointer to the first non-blank character in the string.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipBlanks
+	var p = self
+	while p [] isBlank
+		p ++
+	end
+	return p
+end
+//[cf]
+//[of]:skipNonBlanks
+//[c]Returns a pointer to the first blank character in the string.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipNonBlanks
+	var p = self
+	repeat
+		var c = p []
+		if c isNul or c isBlank
+			break
+		end
+		p ++
+	end
+	return p
+end
+//[cf]
+//[of]:findEndOfLine
+//[c]Returns a pointer to the end of the line.
+//[c]
+//[c]RETURN VALUE
+//[c]	A pointer to the end of line, i.e. the first CR or LF character. If there 
+//[c]	is no CR or LF, the pointer to the end of string is returned.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function findEndOfLine
+	var p = self
+	repeat
+		var c = p []
+		if c == 'nul or c == 'cr or c == 'lf
+			return p
+		end
+		p ++
+	end
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isEmpty
+//[c]Returns true if the string is empty.
+//[c]
+function isEmpty
+	return self [] isNul
+end
+//[cf]
+
+//[of]:startsWithCodeUnit
+//[c]Tests if the string starts with a given code unit.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The code unit.
+//[c]
+function startsWithCodeUnit (c: CodeUnit)
+	return self [] == c
+end
+//[cf]
+//[of]:startsWithChar
+//[c]Tests if the string starts with a given character.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The Unicode character.
+//[c]
+function startsWithChar (c: Char)
+	if c < singleUnitLimit
+		return self [] == c toCodeUnit
+	else
+		var buf : CodeUnitBuffer
+		return self startsWithSubString (toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:startsWithString
+//[c]Returns true if the string starts with the given sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	sub	--	The sub-string.
+//[c]
+function startsWithString (substr: String)
+	return self startsWithSubString (substr, substr size)
+end
+//[cf]
+//[of]:startsWithSubString
+//[c]Returns true if the buffer starts with the given prefix
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The prefix
+//[c]	substrSize	--	The size of the prefix
+//[c]
+function startsWithSubString (	substr	: SubString,
+	substrSize	: StringSize)
+
+	// It is not necessary to check the length of self:
+	// 1. size self >= substrSize: we never read after the end of self
+	// 2. size self < substrSize: self is terminated by a nul so it won't match
+	return areBytesEquals (self, substr, substrSize toByteSize)
+end
+//[cf]
+
+//[of]:endsWithCodeUnit
+//[c]Returns true if the last code unit of the string is the given one.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The code unit.
+//[c]
+function endsWithCodeUnit (c: CodeUnit)
+	var n = self size
+	if n == 0
+		return false
+	end
+	return self [n - 1] == c
+end
+//[cf]
+//[of]:endsWithChar
+//[c]Returns true if the last character of the string is the given one.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The Unicode character.
+//[c]
+function endsWithChar (c: Char)
+	var n = self size
+	if n == 0
+		return false
+	end
+	if c < singleUnitLimit
+		return self [n - 1] == c toCodeUnit
+	else
+		var buf : CodeUnitBuffer
+		return self asSubString endsWithSubString (n, toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:endsWithString
+//[c]Returns true if the buffer ends with the given string.
+//[c]
+function endsWithString (substr: String)
+	return self endsWithSubString (substr, substr size)
+end
+//[cf]
+//[of]:endsWithSubString
+//[c]Tests if the string ends with the given sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The sub-string
+//[c]	substrSize	--	The size of the sub-string
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the string ends with substr.
+//[c]
+function endsWithSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self asSubString endsWithSubString (self size, substr, substrSize)
+end
+//[cf]
+
+//[of]:containsCodeUnit
+//[c]Returns true if the string contains the given code unit.
+//[c]
+function containsCodeUnit (c: CodeUnit)
+	return self findCodeUnit (c) notNil
+end
+//[cf]
+//[of]:containsChar
+//[c]Returns true if the string contains the given character.
+//[c]
+function containsChar (c: Char)
+	return self findChar (c) notNil
+end
+//[cf]
+//[of]:containsString
+//[c]Returns true if the string contains the given sub-string.
+//[c]
+function containsString (substr: String)
+	return self findString (substr) notNil
+end
+//[cf]
+//[of]:containsSubString
+//[c]Returns true if the string contains the given sub-string.
+//[c]
+function containsSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self findSubString (substr, substr size) notNil
+end
+//[cf]
+//[cf]
+//[of]:	private
+static const [windows]	newLineString	= String : "\r\n"
+static const [unix]	newLineString	= String : "\n"
+//[cf]
+end
+//[cf]
+//[of]:StringSize
+//[c]StringSize counts the number of code units.
+//[c]
+//[c]It is used for sizes as well as for offsets (indexed accesses, pointer 
+//[c]arithmetics, ...).
+//[c]
+//[c]The size is a signed 32 bit integers: strings are limited to 2^31- 1 
+//[c]code units including the nul terminator.
+//[c]
+stype StringSize : Index
+//[of]:	fromByteSize
+//[c]Returns a number of bytes as a number of code units.
+//[c]If the argument is too big, the result is undefined.
+//[c]
+meta function fromByteSize (n: Size)
+	return (n / CodeUnit size) : StringSize
+end
+//[cf]
+//[of]:	toByteSize
+//[c]Converts the size or an offset of a string to a size in bytes (type 
+//[c]'Size'). It is just a type conversion.
+//[c]
+function toByteSize
+	return self cast (Size) * CodeUnit size
+end
+//[cf]
+end
+//[cf]
+//[of]:SubString
+//[c]A SubString is a string of UTF-8/16 encoded characters without terminator.
+//[c]Most methods takes the size of the string as the first argument.
+//[c]
+//[c]IMPORTANT: This type is reserved to correctly UTF-8/16 ncoded strings, it must 
+//[c]not be used with incorrect UTF-8/16 sequence as it could lead to undefined 
+//[c]behavior.
+//[c]
+stype SubString : *[]CodeUnit
+//[of]:	instance creation
+//[of]:allocate
+//[c]Allocates an array of 'size' code units elements with the type of 'SubString'.
+//[c]
+meta function allocate (size: StringSize)
+	return allocateBytes (size toByteSize) cast (SubString)
+end
+//[cf]
+//[cf]
+//[of]:	initialize - release
+//[of]:delete
+//[c]Deletes the sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]
+//[c]REMARKS
+//[c]	This function applies only to sub-strings that have been specially 
+//[c]	allocated on the heap,	not sub-strings that are part of another 
+//[c]	string or sub-string.
+//[c]
+function delete (size: StringSize)
+	freeBytes (self, size toByteSize)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:asString
+//[c]Returns the sub-string as a string.
+//[c]
+function asString
+	return self downcast (String)
+end
+//[cf]
+//[of]:hash
+//[c]Computes and returns the hash code of the string
+//[c]
+function hash (size: StringSize)
+	var p = self
+	var limit = self + size
+	var sum = Size : 0xA5A5A5A5
+	while p <> limit
+		var c = p []
+		p ++
+		sum = (sum >> 1) + (c hash << hashShift)
+	end
+	return sum
+end
+//[cf]
+//[of]:nextChar
+//[c]Returns the first Unicode character of the sub-string and a pointer to the next char.
+//[c]
+//[c]RETURN VALUES
+//[c]	cp	--	The Unicode character.
+//[c]	n	--	The number of units to encode this character.
+//[c]
+//[c]REMARKS
+//[c]	The size of the sub-string is not specified, this function must not be
+//[c]	invoked with an empty sub-string.
+//[c]
+// UTF-8
+function [unix] nextChar : Char, StringSize
+	var p = self
+	var b = p []
+	var cp = b cast (Char)
+	switch utf8Lengths[b]
+	case 0
+		return cp, 1
+	case 1
+		cp &= 0x1F
+		cp <<= 6
+		cp |= (p[1] & 0x3F) cast (Char)
+		return cp, 2
+	case 2
+		cp &= 0x0F
+		cp <<= 6
+		cp |= (p[1] & 0x3F) cast (Char)
+		cp <<= 6
+		cp |= (p[2] & 0x3F) cast (Char)
+		return cp, 3
+	else // 3
+		cp &= 0x07
+		cp <<= 6
+		cp |= (p[1] & 0x3F) cast (Char)
+		cp <<= 6
+		cp |= (p[2] & 0x3F) cast (Char)
+		cp <<= 6
+		cp |= (p[3] & 0x3F) cast (Char)
+		return cp, 4
+	end
+end
+
+// UTF-16
+function [windows] nextChar : Char, StringSize
+	var p = self
+	var w = self []
+	if w < 0xD800
+		return w cast (Char), 1
+	elsif w < 0xE000
+		var cp = ((w cast (Char) & 0x3FF ) << 10) + (self [1] cast (Char) & 0x3FF) + 0x10000
+		return cp, 2
+	else
+		return w cast (Char), 1
+	end
+end
+//[cf]
+//[of]:previousChar
+//[c]Returns the address and character of the previous Unicode character of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	cp	--	The Unicode character.
+//[c]	n	--	The number of units to encode this character.
+//[c]
+//[c]REMARKS
+//[c]	The size of the sub-string is not specified, this function must not be
+//[c]	invoked with an empty sub-string.
+//[c]
+function previousChar
+	var p = self
+	repeat
+		p --
+		if not p [] isContinuation
+			break
+		end
+	end
+	return p nextChar
+end
+//[cf]
+//[of]:charSize
+//[c]Returns the number of code units for the character pointed by the given
+//[c]sub-string.
+//[c]
+//[c]REMARKS
+//[c]	The size of the sub-string is not specified, this function must not be
+//[c]	invoked with an empty sub-string.
+//[c]
+// UTF-8
+function [unix] charSize
+	return utf8Lengths[self[]] : Stringize + 1
+end
+
+// UTF-16
+function [windows] charSize : StringSize
+	var w = self []
+	if w < 0xD800
+		return 1
+	elsif w < 0xE000
+		return 2
+	else
+		return 1
+	end
+end
+//[cf]
+//[of]:to
+//[c]Returns the number of code units from 'self' to 'other'. 
+//[c]
+//[c]It is just the difference 'other - self' but as a StringSize type.
+//[c]
+function _dist (other: SubString)
+	return (self super ~ other super) cast (StringSize)
+end
+//[cf]
+//[cf]
+//[of]:	comparing
+//[of]:compare
+//[c]Compares two sub-strings.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	the size of the sub-string.
+//[c]	other	--	the sub-string to compare.
+//[c]	otherSize	--	the size of the sub-string to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if the sub-strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compare (size: StringSize, other: SubString, otherSize: StringSize) : Integer
+	var p1	= self
+	var p2	= other
+	var limit1 = p1 + size
+	var limit2 = p2 + otherSize
+	repeat
+		if p1 == limit1
+			if p2 == limit2
+				return 0
+			end
+			return -1
+		elsif p2 == limit2
+			return 1
+		end
+		var c = p1 []
+		var d = p2 []
+		if c <> d // Return difference if different
+			return c toInteger - d toInteger
+		end
+		p1 ++
+		p2 ++
+	end
+end
+//[cf]
+//[of]:compareNoCase
+//[c]Compares two sub-strings in case insensitive mode.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	the size of the sub-string.
+//[c]	other	--	the sub-string to compare.
+//[c]	otherSize	--	the size of the sub-string to compare.
+//[c]
+//[c]RETURN VALUES
+//[c]	0 if strings are equals,
+//[c]	> 0 if self > other,
+//[c]	< 0 if self < other.
+//[c]
+function compareNoCase (	size	: StringSize, 
+	other	: SubString, 
+	otherSize	: StringSize) : Integer
+
+	var p1 = self
+	var p2 = other
+	var limit1 = p1 + size
+	var limit2 = p2 + otherSize
+	repeat
+		if p1 == limit1
+			if p2 == limit2
+				return 0
+			end
+			return -1
+		elsif p2 == limit2
+			return 1
+		end
+		var c1, n1 = p1 nextChar
+		p1 += n1
+		var c2, n2 = p2 nextChar
+		p2 += n2
+		var d = c1 compareNoCase (c2)
+		if d <> 0
+			return d
+		end
+	end
+end
+//[cf]
+//[of]:isEqual
+//[c]Tests if two sub-strings are equals.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	other	--	The sub-string to compare with.
+//[c]	otherSize	--	The size of the sub-string to compare with.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the two sub-strings are equals.
+//[c]
+function isEqual (	size	: StringSize, 
+	other	: SubString, 
+	otherSize	: StringSize)
+
+	if size <> otherSize
+		return false
+	end
+	return areBytesEquals (self, other, size toByteSize)
+end
+//[cf]
+//[of]:isEqualNoCase
+//[c]Tests if two sub-strings are equals (case insensitive comparison)
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	other	--	The sub-string to compare with.
+//[c]	otherSize	--	The size of the sub-string to compare with.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the two sub-strings are equals.
+//[c]
+function isEqualNoCase (	size	: StringSize, 
+	other	: SubString, 
+	otherSize	: StringSize)
+
+	if size <> otherSize
+		return false
+	end
+	
+	var p1 = self
+	var p2 = other
+	var limit = other + size
+	while p2 <> limit
+		var c1, n1 = p1 nextChar
+		p1 += n1
+		var c2, n2 = p2 nextChar
+		p2 += n2
+		c1 = c1 toUpper
+		c2 = c2 toUpper
+		if c1 <> c2
+			return false
+		end
+	end
+	return true
+end
+//[cf]
+//[of]:isEqualString
+//[c]Tests if the sub-string is equal to the string
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	other	--	The string to compare with.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the sub-string is equal to the string.
+//[c]
+function isEqualString (	size	: StringSize, 
+	other	: String)
+
+	// It is not necessary to check the length of other:
+	// 1. size >= other size: the nul terminator of other won't match
+	// 2. size < other size: the comparison will stop before the end of other
+	return areBytesEquals (self, other, size toByteSize) and other [size] isNul
+
+end
+//[cf]
+//[cf]
+//[of]:	converting
+//[of]:toUpper
+//[c]Returns a copy of this string with all lowercase letters converted to uppercase.
+//[c]
+function toUpper (size: StringSize)
+	var sb : StringBuffer
+	sb initializeWithSize (size)
+	sb addUpper (self, size)
+	var s = sb toString
+	sb release
+	return s
+end
+//[cf]
+//[of]:toLower
+//[c]Returns a copy of this string with all uppercase letters converted to lowercase.
+//[c]
+function toLower (size: StringSize)
+	var sb : StringBuffer
+	sb initializeWithSize (size)
+	sb addLower (self, size)
+	var s = sb toString
+	sb release
+	return s
+end
+//[cf]
+//[cf]
+//[of]:	copying
+//[of]:getCopy
+//[c]Returns a copy of the sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string
+//[c]
+//[c]REMARKS
+//[c]	The size is assumed to be less or equal than the size of the string.
+//[c]	The returned copy must be freed with 'delete (size)'.
+//[c]
+function getCopy (size: StringSize)
+	var buf	= SubString allocate (size)
+	buf copy (self, size)
+	return buf
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachChar
+//[c]Enumerates each character of the string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	-- The size of the sub-string.
+//[c]	block(Char)	-- The routine to process each unicode character of the string.
+//[c]
+function eachChar (size: StringSize)
+	var p = self
+	var limit = p + size
+	while p <> limit
+		var c, n = p nextChar
+		p += n
+		yield c
+	end
+end
+//[cf]
+//[of]:eachCodeUnit
+//[c]Enumerates each byte of the string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	-- The size of the sub-string.
+//[c]	block(CodeUnit)	-- The routine to process each code unit of the string.
+//[c]
+function eachCodeUnit (size: StringSize)
+	var p = self
+	var limit = p + size
+	while p <> limit
+		yield p []
+		p ++
+	end
+end
+//[cf]
+//[of]:eachLine
+//[c]Enumerates each line of the sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	block(SubString, StringSize)	--	a routine to process each line of the sub-string.
+//[c]
+function eachLine (size: StringSize)
+	var p = self
+	var limit = p + size
+	repeat
+		var start = p
+		var c : CodeUnit
+		while p < limit
+			c = p []
+			if c == 'cr or c == 'lf
+				break
+			end
+			p ++
+		end
+		yield start, p ~ start
+		
+		if p == limit
+			break
+		end
+
+		// Skip CR or LF
+		p ++
+		
+		// Skip LF
+		if c == 'cr and p < limit and p [] == 'lf
+			p ++ 
+		end
+	end
+end
+//[cf]
+//[cf]
+//[of]:	searching
+//[of]:findChar
+//[c]Returns the first occurrence of a char, nil if not found.
+//[c]
+function findChar (size: StringSize, c: Char)
+	if c < singleUnitLimit
+		// The Unicode char is a single code unit, use the fast scan
+		var p = self
+		var limit = p + size
+		var b = c toCodeUnit // Truncate the char
+		while p <> limit
+			var d = p []
+			if d == b
+				return p
+			end
+			p ++
+		end
+		return nil
+	else
+		// The Unicode char is not a single code unit, it is encoded in multiple 
+		// bytes so it must be encoded in a string an seached with the search
+		// string function.
+		var buf : CodeUnitBuffer
+		return self findSubString (size, toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:findCodeUnit
+//[c]Returns the first occurrence of a char, nil if not found.
+//[c]
+function findCodeUnit (size: StringSize, c: CodeUnit)
+	var p = self
+	var limit = p + size
+	while p <> limit
+		var d = p []
+		if d == c
+			return p
+		end
+		p ++
+	end
+	return nil
+end
+//[cf]
+//[of]:findString
+//[c]Returns the first occurrence of a string, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the string.
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findString (	size	: StringSize, 
+	substr	: String)
+
+	return self findSubString (size, substr, substr size)
+end
+//[cf]
+//[of]:findSubString
+//[c]Returns the first occurrence of a substring, nil if not found
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the string.
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findSubString (	size	: StringSize, 
+	substr	: SubString, 
+	substrSize	: StringSize)
+
+	if size < substrSize
+		return nil
+	end
+
+	var p = self
+	var limit = p + size - substrSize + 1
+	var d = substr []
+	var q = (substr + 1) : Bytes
+	var n = (substrSize - 1) toByteSize
+	while p <> limit
+		var c = p []
+		p ++
+		if c == d and areBytesEquals (p, q, n)
+			return p - 1
+		end
+	end
+	
+	// Not found
+	return nil
+end
+//[cf]
+
+//[of]:findLastChar
+//[c]Returns the last occurrence of a character, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	c	--	The Unicode character.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the last occurrence of the character or nil if not found.
+//[c]
+function findLastChar (	size	: StringSize, 
+	c	: Char)
+
+	if c < singleUnitLimit
+		// The Unicode char is an ASCII char, use the fast scan
+		var p = self + size - 1
+		var b = c toCodeUnit // Truncate the char
+		while p >= self
+			if p [] == b
+				return p
+			end
+			p --
+		end
+		// Not found
+		return nil
+	else
+		// The Unicode char is not an ASCII char, it is encoded in multiple 
+		// bytes so it must be encoded in a string an seached with the search
+		// string function.
+		var buf : CodeUnitBuffer
+		return self findLastSubString (size, toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:findLastCodeUnit
+//[c]Returns the last occurrence of a character, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	c	--	The Unicode character.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the last occurrence of the character or nil if not found.
+//[c]
+function findLastCodeUnit (	size	: StringSize, 
+	c	: CodeUnit)
+
+	var p = self + size - 1
+	while p >= self
+		if p [] == c
+			return p
+		end
+		p --
+	end
+	return nil
+end
+//[cf]
+//[of]:findLastString
+//[c]Returns the last occurrence of a sub-string, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findLastString (	size	: StringSize, 
+	substr	: String)
+
+	return self findLastSubString (size, substr, substr size)
+end
+//[cf]
+//[of]:findLastSubString
+//[c]Returns the last occurrence of a sub-string, nil if not found.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	A non-empty sub-string to find in the string.
+//[c]	substrSize	--	The size of the sub-string to find.
+//[c]
+//[c]RETURN VALUES
+//[c]	The pointer to the first occurrence of the string or nil if not found.
+//[c]
+function findLastSubString (	size	: StringSize, 
+	substr	: SubString, 
+	substrSize	: StringSize)
+
+	// Not found if the size of the substring is bigger than the size of
+	// the string.
+	if substrSize > size
+		return nil
+	end
+	
+	var p = self + size - substrSize
+	var q = substr
+	var d = q []
+	q ++
+	var size = (substrSize - 1) toByteSize
+	repeat
+		if p [] == d and areBytesEquals (p + 1, q, size)
+			return p
+		elsif p == self
+			return nil
+		end
+		p --
+	end
+end
+//[cf]
+
+//[of]:skipBlanks
+//[c]Returns a pointer to the first non-blank character in the sub-string.
+//[c]
+//[c]PARAMETER
+//[c]	size	--	The size of the sub-string.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipBlanks (size: StringSize)
+	var p = self
+	var limit = p + size
+	while p <> limit and p [] isBlank
+		p ++
+	end
+	return p
+end
+//[cf]
+//[of]:skipNonBlanks
+//[c]Returns a pointer to the first blank character in the sub-string.
+//[c]
+//[c]PARAMETER
+//[c]	size	--	The size of the sub-string.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function skipNonBlanks (size: StringSize)
+	var p = self
+	var limit = p + size
+	while p <> limit and not p [] isBlank
+		p ++
+	end
+	return p
+end
+//[cf]
+//[of]:findEndOfLine
+//[c]Returns a pointer to the end of the line.
+//[c]
+//[c]PARAMETER
+//[c]	size	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUE
+//[c]	A pointer to the end of line, i.e. the first CR or LF character. If there 
+//[c]	is no CR or LF, the pointer to the end of string is returned.
+//[c]
+//[c]REMARKS
+//[c]	The returned pointer is valid as long as the buffer is not modified.
+//[c]
+function findEndOfLine (size: StringSize)
+
+	var p = self
+	var limit = p + size
+	while p <> limit
+		var c = p []
+		if c == 'cr or c == 'lf
+			break
+		end
+		p ++
+	end
+	return p
+
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:startsWithChar
+//[c]Tests if the sub-string starts with a given character.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	c	--	The Unicode character.
+//[c]
+function startsWithChar (size: StringSize, c: Char)
+	if c < singleUnitLimit
+		return size > 0 and self [] == c : CodeUnit
+	else
+		var buf : CodeUnitBuffer
+		return self startsWithSubString (size, toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:startsWithString
+//[c]Returns true if the sub-string starts with the given prefix.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The prefix.
+//[c]
+function startsWithString (	size	: StringSize, 
+	substr	: String)
+
+	return self startsWithSubString (size, substr, substr size)
+end
+//[cf]
+//[of]:startsWithSubString
+//[c]Returns true if the sub-string starts with the given prefix.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The prefix.
+//[c]	substrSize	--	The size of the prefix.
+//[c]
+function startsWithSubString (	size	: StringSize, 
+	substr	: SubString, 
+	substrSize	: StringSize)
+
+	if size < substrSize
+		return false
+	end
+	return areBytesEquals (self, substr, substrSize toByteSize)
+end
+//[cf]
+
+//[of]:endsWithChar
+//[c]Returns true if the last character of the string is the given one.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	c	--	The Unicode character.
+//[c]
+function endsWithChar (	size	: StringSize, 
+	c	: Char)
+
+	if size == 0
+		return false 
+	elsif c < singleUnitLimit
+		return self [size - 1] == c cast (CodeUnit)
+	else
+		var buf : CodeUnitBuffer
+		return self endsWithSubString (size, toSubString (c, buf))
+	end
+end
+//[cf]
+//[of]:endsWithString
+//[c]Returns true if the sub-string ends with the given string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The string to compare with.
+//[c]
+function endsWithString (	size	: StringSize, 
+	substr	: String)
+
+	return self endsWithSubString (size, substr, substr size)
+end
+//[cf]
+//[of]:endsWithSubString
+//[c]Returns true if the sub-string ends with the given suffix..
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The suffix.
+//[c]	substrSize	--	The size of the suffix.
+//[c]
+function endsWithSubString (	size	: StringSize, 
+	substr	: SubString, 
+	substrSize	: StringSize)
+
+	if size < substrSize
+		return false
+	end
+	var start = self + size - substrSize
+	return areBytesEquals (start, substr, substrSize toByteSize)
+end
+//[cf]
+
+//[of]:containsChar
+//[c]Returns true if the sub-string contains the given character.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	c	--	The Unicode character.
+//[c]
+function containsChar (size: StringSize, c: Char)
+	return self findChar (size, c) notNil
+end
+//[cf]
+//[of]:containsString
+//[c]Returns true if the sub-string contains the given string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The sub-string to search.
+//[c]
+function containsString (size: StringSize, substr: String)
+	return self findString (size, substr) notNil
+end
+//[cf]
+//[of]:containsSubString
+//[c]Returns true if the sub-string contains the given sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	size	--	The size of the sub-string.
+//[c]	substr	--	The sub-string to search.
+//[c]	substrSize	--	The size of the sub-string to search.
+//[c]
+function containsSubString (	size	: StringSize, 
+	substr	: SubString, 
+	substrSize	: StringSize)
+
+	return self findSubString (size, substr, substrSize) notNil
+end
+//[cf]
+//[cf]
+//[of]:	writing
+//[c]Writing methods are methods that write bytes inside a SubString buffer.
+//[c]
+//[of]:addChar
+//[c]Appends a single Unicode character.
+//[c]
+//[c]PARAMETERS
+//[c]	c	--	The char to write.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the first char after the written character.
+//[c]
+function addChar (c: Char)
+	var n = self writeChar (c)
+	return self + n
+end
+//[cf]
+//[of]:addString
+//[c]Appends a string.
+//[c]
+//[c]PARAMETERS
+//[c]	str	--	The string to write.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the first char after the written string. The nul terminator 
+//[c]	is not written.
+//[c]
+function addString (str: String)
+	return self addSubString (str, str size)
+end
+//[cf]
+//[of]:addSubString
+//[c]Appends a sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	substr	--	The sub-string to write.
+//[c]	substrSize	--	The size of the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	A pointer to the first char after the written string. The nul terminator 
+//[c]	is not written.
+//[c]
+function addSubString (	substr	: SubString, 
+	substrSize	: StringSize)
+
+	self copy (substr, substrSize)
+	return self + substrSize
+end
+//[cf]
+//[of]:writeChar
+//[c]Writes the Unicode character to a sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	char	--	The character to add to the sub-string.
+//[c]
+//[c]RETURN VALUES
+//[c]	size	--	The size of the sub-string.
+//[c]
+function [unix] writeChar (char: Char) : StringSize
+	if char < singleUnitLimit
+		self [0] = char toCodeUnit
+		return 1
+	elsif char < 0x800
+		self [0] = 0xC0 + (char >> 6) toCodeUnit
+		self [1] = 0x80 + (char & 0x3F) toCodeUnit
+		return 2
+	elsif char < 0x10000
+		self [0] = 0xE0 + (char >> 12) toCodeUnit
+		self [1] = 0x80 + ((char >> 6) & 0x3F) toCodeUnit
+		self [2] = 0x80 + (char & 0x3F) toCodeUnit
+		return 3
+	else
+		self [0] = 0xF0 + (char >> 18) toCodeUnit
+		self [1] = 0x80 + ((char >> 12) & 0x3F) toCodeUnit
+		self [2] = 0x80 + ((char >> 6) & 0x3F) toCodeUnit
+		self [3] = 0x80 + (char & 0x3F) toCodeUnit
+		return 4
+	end
+end
+
+function [windows] writeChar (char: Char) : StringSize
+	if char < singleUnitLimit
+		self [0] = char toCodeUnit
+		return 1
+	else
+		var c = char - 0x10000
+		self [0] = 0xD800 + (c >> 10) toCodeUnit
+		self [1] = 0xDC00 + (c & 0x3FF) toCodeUnit
+		return 2
+	end
+end
+//[cf]
+//[of]:copy
+//[c]Copies the n code units from src to the memory pointed by self.
+//[c]
+//[c]REMARKS
+//[c]	The source must not overlaps the target.
+//[c]
+function copy (	src	: SubString, 
+	size	: StringSize)
+
+	copyBytes (self, src, size toByteSize)
+end
+//[cf]
+//[of]:move
+//[c]Moves the n code units from src to the memory pointed by self.
+//[c]
+//[c]REMARKS
+//[c]	The source can overlaps the target.
+//[c]
+function move (	src	: SubString, 
+	size	: StringSize)
+
+	moveBytes (self, src, size toByteSize)
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[cf]
+//[of]:Collection
+//[of]:Vector
+//[c]A vector of primitive types. A vector is a resizable array.
+//[c]
+//[c]PARAMETERS
+//[c]	Value	--	The type of the values. It must be a simple type (an integer, a pointer, ...).
+//[c]
+struct Vector (Value)
+
+	var array	: *[] Value	// The list of values
+	var size	: Index	// The number of values
+	var allocated	: Index	// The number of values allocated in the list
+
+	static const defaultSize = Index : 8	// The default number of allocated items
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize
+	self initializeWithSize (defaultSize)
+end
+//[cf]
+//[of]:initializeWithSize
+function initializeWithSize (initialAllocated: Index)
+	self size	= 0
+	self allocated	= initialAllocated
+	self array	= Value allocateArray (initialAllocated)
+end
+//[cf]
+//[of]:initializeFrom
+//[c]Initializes the vector by copying another vector
+//[c]
+function initializeFrom (src: *Vector (Value))
+
+	self size	= src size
+	self allocated	= src allocated
+	self array	= Value allocateArray (src allocated)
+	
+	Value copyArray (self array, src array, src size)
+
+end
+//[cf]
+//[of]:release
+function release
+	Value freeArray (self array, self allocated)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:[]
+//[c]Returns an element at given index.
+//[c]
+function _at (i: Index)
+	return self array [i]
+end
+//[cf]
+//[of]:set
+//[c]Changes the value of an element at given index.
+//[c]
+//[c]PARAMETERS
+//[c]	index	--	The index of the element to replace
+//[c]	value	--	The new value
+//[c]
+function set (index: Index, value: Value)
+	self array [index] = value
+end
+//[cf]
+//[of]:first
+//[c]Returns the first value.
+//[c]
+//[c]REMARKS
+//[c]	The vector is assumed to have at least one element
+//[c]
+function first
+	return self [0]
+end
+//[cf]
+//[of]:last
+//[c]Returns the last value.
+//[c]
+//[c]REMARKS
+//[c]	The vector is assumed to have at least one element
+//[c]
+function last
+	return self [self size - 1]
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+//[c]Appends an element.
+//[c]
+function add (value: Value)
+
+	var index = self size
+	if self allocated == index
+		self increaseAllocated
+	end
+	
+	self array [index] = value
+	self size ++
+
+end
+//[cf]
+//[of]:addFirst
+//[c]Adds an element at the beginning.
+//[c]
+function addFirst (value: Value)
+	self insert (value, 0)
+end
+//[cf]
+//[of]:addAll
+//[c]Add all element of the source vector to the vector.
+//[c]
+//[c]Note that the function is generic, it works with any subclass replacing the 
+//[c]add function.
+//[c]
+function + addAll (src : *Vector (Value))
+	src each do v
+		self add (v)
+	end
+end
+//[cf]
+//[of]:insert
+//[c]Inserts an element at index.
+//[c]
+function insert (value: Value, index: Index)
+
+	var n = self size
+	if self allocated == n
+		self increaseAllocated
+	end
+
+	var base = self array + index
+	moveArray (base + 1, base, Value, n - index)
+
+	self array [index] = value
+	self size ++
+
+end
+//[cf]
+//[of]:remove
+//[c]Removes an element at index.
+//[c]
+function remove (index: Index)
+
+	var base	= self array + index
+	var n	= self size
+
+	moveArray (base, base + 1, Value, n - index - 1)
+	self size --
+
+end
+//[cf]
+//[of]:removeValue
+//[c]Removes an element.
+//[c]
+//[c]PARAMETERS
+//[c]	value		-- The value to remove
+//[c]
+//[c]REMARKS
+//[c]	This function removes the first element matching the given value.
+//[c]	The '==' operator is used for comparison.
+//[c]
+function removeValue (value: Value)
+
+	var i = Index : 0
+	var n = self size
+	while i < n
+		if self [i] == value
+			self remove (i)
+			return
+		end
+		i ++
+	end
+
+end
+//[cf]
+//[of]:removeAll
+//[c]Removes all elements.
+//[c]
+function removeAll
+	self size = 0
+end
+//[cf]
+//[of]:removeFrom
+//[c]Removes all elements starting from index.
+//[c]
+function removeFrom (index: Index)
+	self size = index
+end
+//[cf]
+//[of]:removeFirst
+function removeFirst
+	self remove (0)
+end
+//[cf]
+//[of]:removeLast
+function removeLast
+	self size --
+end
+//[cf]
+//[of]:replace
+//[c]Replaces the n1 slots at index by n2 slots.
+//[c]
+//[c]PARAMETERS
+//[c]	index	--	The index of the replaced items.
+//[c]	n1	--	The number of items removed.
+//[c]	n2	--	The number of items added.
+//[c]
+//[c]REMARKS
+//[c]	Values are unchanged/uninitialized.
+//[c]
+function replace (	index	: Index, 
+	n1	: Index, 
+	n2	: Index)
+
+	var delta = n2 - n1
+	if delta == 0
+		return
+	end
+	
+	var size = self size
+	var newSize = size + delta
+	if delta > 0 and self allocated < newSize
+		self allocate (newSize * 3 / 2)
+	end
+
+	var base = self array + index
+	moveArray (base + n2, base + n1, Value, size - index - n1)
+	self size += delta
+
+end
+//[cf]
+//[of]:reserve
+//[c]Reserves space for n elements.
+//[c]
+//[c]This function is for optimization only: it avoids to much re-allocations 
+//[c]while filling the vector.
+//[c]
+function reserve (n: Index)
+	if self allocated < n
+		self allocate (n)
+	end
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates all elements.
+//[c]
+function each
+	var i = Index : 0
+	var n = self size
+	while i < n
+		yield self [i]
+		i ++
+	end
+end
+//[cf]
+//[of]:eachWithIndex
+//[c]Enumerates all elements. Pass the index and the object to the block.
+//[c]
+function eachWithIndex
+	var i = Index : 0
+	var n = self size
+	while i < n
+		yield i, self [i]
+		i ++
+	end
+end
+//[cf]
+//[of]:reverseEach
+//[c]Enumerates all elements in reverse order.
+//[c]
+function reverseEach
+	var i = self size
+	while i <> 0
+		i --
+		yield self [i]
+	end
+end
+//[cf]
+//[cf]
+//[of]:	searching
+//[of]:indexOf
+//[c]Finds the index of a value.
+//[c]
+//[c]Returns its index or -1 if not found
+//[c]
+function indexOf (value: Value) : Index
+
+	self size each do i
+		if self [i] == value
+			return i
+		end
+	end
+	return -1
+
+end
+//[cf]
+//[cf]
+//[of]:	sorting
+//[of]:insertionSort
+//[c]Sorts elements using the insertion sort algorithm.
+//[c]
+//[c]Naive algorithm but more efficient than quick sort on almost
+//[c]sorted lists.
+//[c]
+//[c]Elements are compared using the '<' operators on items.
+//[c]
+function insertionSort
+
+	var n = self size
+	if n < 2
+		return
+	end
+	var a = self array
+	var i = 1
+	while i < n
+		var item = a [i]
+		var k = i
+		while k > 0 and item < a [k - 1]
+			a [k] = a [k - 1]
+			k --
+		end
+		a [k] = item
+		i ++
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:contains
+//[c]Tests if the vector contains an item.
+//[c]
+function contains (value: Value)
+
+	self each do e
+		if e == value
+			return true
+		end
+	end
+	return false
+
+end
+//[cf]
+//[of]:isEmpty
+function isEmpty
+	return self size == 0
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:increaseAllocated
+//[c]Reserves space.
+//[c]
+function increaseAllocated
+	self allocate (self allocated * 3 / 2 + 1)
+end
+//[cf]
+//[of]:allocate
+//[c]Reserves space.
+//[c]
+function allocate (n: Index)
+
+	// Create new array
+	var a = Value allocateArray (n)
+	
+	// Copy content of old array into the new one
+	Value copyArray (a, self array, self size)
+
+	// Delete the old array
+	Value freeArray (self array, self allocated)
+
+	self allocated	= n
+	self array	= a
+
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:SortVector
+struct SortVector (Value) : Vector (Value)
+	
+	// private
+	var cmp	: & (Value, Value) -> (Integer)
+	
+	static const defaultSize	= Index : 8
+	
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (cmp: & (Value, Value) -> (Integer))
+	self initializeWithSize (defaultSize, cmp)
+end
+//[cf]
+//[of]:initializeWithSize
+function initializeWithSize (initialAllocated: Index, cmp: & (Value, Value) -> (Integer))
+	self super initializeWithSize (initialAllocated)
+	self cmp = cmp
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+function add (value: Value)
+	self sortInsert (value, 0, self size)
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:sortInsert
+function sortInsert (value: Value, a: Index, b: Index) :
+
+	if a == b
+		self insert (value, a)
+	else
+		var n = b - a
+		var m = a + n / 2
+		if self cmp call (value, self [m]) < 0
+			self sortInsert (value, a, m)
+		else
+			self sortInsert (value, m + 1, b)
+		end
+	end
+
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+
+//[of]:Collection
+//[c]Simple linked-list of elements.
+//[c]
+//[c]The elements of Collection (*T) should be defined as:
+//[c]
+//[c]	struct T : CollectionElement (T)
+//[c]		...
+//[c]	end
+//[c]
+//[c]But any element that has a 'nextSibling' attribute is ok:
+//[c]
+//[c]	struct T
+//[c]		...
+//[c]		var nextSibling	: *T
+//[c]		...
+//[c]	end
+//[c]
+struct Collection (Element)
+
+	var size	: Index
+	var firstElement	: *Element
+	var lastElement	: *Element
+
+	'empty = {0, nil, nil}	// A constant empty collection, never add something to it.
+	
+//[of]:	initialize - release
+//[of]:initialize
+function initialize
+	self size	= 0
+	self firstElement	= nil
+	self lastElement	= nil
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:elementValue
+//[c]Returns the value of an element
+//[c]
+//[c]	This function is useful to iterate through a collection in an uniform manner
+//[c]		obj firstElement	-- returns the reference to the first element
+//[c]		obj nextElement (element)	-- returns the reference to the next element of 'element'
+//[c]		obj elementValue (element)	-- returns the item
+//[c]	
+//[c]	These 3 functions are used by the global each (iterable1, iterable2) function to iterate on
+//[c]	the second list (iterable2)
+//[c]
+function elementValue (element)
+	return element
+end
+//[cf]
+//[of]:nextElement
+//[c]Returns the next element
+//[c]
+//[c]	This function is useful to iterate through a collection in an uniform manner
+//[c]		obj firstElement	-- returns the reference to the first element
+//[c]		obj nextElement (element)	-- returns the reference to the next element of 'element'
+//[c]		obj elementValue (element)	-- returns the item
+//[c]	
+//[c]	These 3 functions are used by the global each (iterable1, iterable2) function to iterate on
+//[c]	the second list (iterable2)
+//[c]
+function nextElement (element)
+	return element nextSibling
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+//[c]Adds an element at the end of the collection.
+//[c]
+function add (e: *Element)
+
+	if self lastElement notNil
+		self lastElement nextSibling = e
+	end
+	self lastElement = e
+	if self firstElement isNil
+		self firstElement = e
+	end
+	self size ++
+	
+	// The next sibling is set when inserting the element in the collection
+	e nextSibling = nil
+
+end
+//[cf]
+//[of]:addFirst
+//[c]Inserts an element at the beginning
+//[c]
+function addFirst (e: *Element)
+	e nextSibling = self firstElement
+	self firstElement = e
+	if self lastElement isNil
+		self lastElement = e
+	end
+	self size ++
+end
+//[cf]
+//[of]:addAll
+//[c]Adds all the element of another collection to this one
+//[c]
+//[c]PARAMETERS
+//[c]	other	-	The elements to append
+//[c]
+//[c]REMARKS
+//[c]	The other collection is no longer valid after using this function: elements
+//[c]	can belong to one collection only.
+//[c]
+function addAll (other: *Collection (Element))
+
+	if self lastElement notNil
+		self lastElement nextSibling = other firstElement
+	else
+		self firstElement = other firstElement
+	end
+	self lastElement = other lastElement
+	self size += other size
+
+end
+//[cf]
+//[of]:removeAll
+//[c]Removes all elements from the collection
+//[c]
+function removeAll
+	self initialize
+end
+//[cf]
+//[of]:deleteAll
+//[c]Deletes all elements
+//[c]
+function deleteAll
+	self safeEach do i
+		delete (i)
+	end
+	self removeAll
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+function each
+	var e = self firstElement
+	while e notNil
+		yield e
+		e = e nextSibling
+	end
+end
+//[cf]
+//[of]:safeEach
+//[c]Enumerates all elements.
+//[c]
+//[c]REMARKS
+//[c]	Similar to each, but the current element can be removed
+//[c]	or deleted during the enumeration.
+//[c]
+function safeEach
+
+	var e = self firstElement
+	while e notNil
+		var next = e nextSibling
+		yield e
+		e = next
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isEmpty
+function isEmpty
+	return self firstElement isNil
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:CollectionElement
+//[c]The base class for the element of a collections
+//[c]
+struct CollectionElement (Element)
+	var nextSibling	: *Element
+
+//[of]:	testing
+//[of]:isLast
+//[c]Returns true if the element is the last element of the collection.
+//[c]
+function isLast
+	return self nextSibling isNil
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:LinkCollection
+//[c]Double linked list of elements
+//[c]
+struct LinkCollection (Element)
+	var firstElement	: *Element
+	var lastElement	: *Element
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize
+	self firstElement	= nil
+	self lastElement	= nil
+end
+//[cf]
+//[of]:deleteAllAndRelease
+//[c]This function is used to delete each element of the collection
+//[c]and release it.
+//[c]
+function deleteAllAndRelease
+
+	var e = self firstElement
+	while e notNil
+		var next = e nextSibling
+		e delete
+		e = next
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:nextElement
+//[c]Returns the next element
+//[c]
+//[c]	This function is useful to iterate through a collection in an uniform manner
+//[c]		obj firstElement	-- returns the reference to the first element
+//[c]		obj nextElement (element)	-- returns the reference to the next element of 'element'
+//[c]		obj elementValue (element)	-- returns the item
+//[c]	
+//[c]	These 3 functions are used by the global each (iterable1, iterable2) function to iterate on
+//[c]	the second list (iterable2)
+//[c]
+function nextElement (element)
+	return element nextSibling
+end
+//[cf]
+//[of]:elementValue
+//[c]Returns the value of an element
+//[c]
+//[c]	This function is useful to iterate through a collection in an uniform manner
+//[c]		obj firstElement	-- returns the reference to the first element
+//[c]		obj nextElement (element)	-- returns the reference to the next element of 'element'
+//[c]		obj elementValue (element)	-- returns the item
+//[c]	
+//[c]	These 3 functions are used by the global each (iterable1, iterable2) function to iterate on
+//[c]	the second list (iterable2)
+//[c]
+function elementValue (element)
+	return element
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+//[c]Adds an element at the end of the collection
+//[c]
+function add (e: *Element)
+
+	e nextSibling	= nil
+	e previousSibling	= self lastElement
+
+	if self firstElement isNil
+		self firstElement = e
+	end
+	if self lastElement notNil
+		self lastElement nextSibling = e
+	end
+	self lastElement = e
+	
+end
+//[cf]
+//[of]:addAfter
+//[c]Adds an element after the given 'pred' element
+//[c]
+//[c]PARAMETERS
+//[c]	e	--	the element to insert
+//[c]	pred	--	the predecessor of e
+//[c]
+function addAfter (e: *Element, pred: *Element)
+
+	e nextSibling	= pred nextSibling
+	e previousSibling	= pred
+	pred nextSibling	= e
+	
+	if e nextSibling isNil
+		self lastElement = e
+	else
+		e nextSibling previousSibling = e
+	end
+	
+end
+//[cf]
+//[of]:addBefore
+//[c]Adds an element before the given 'next' element
+//[c]
+//[c]PARAMETERS
+//[c]	e	--	the element to insert
+//[c]	next	--	the successor of e
+//[c]
+function addBefore (e: *Element, next: *Element)
+
+	e nextSibling = next
+	e previousSibling = next previousSibling
+	next previousSibling = e
+	if e previousSibling isNil
+		self firstElement = e
+	else
+		e previousSibling nextSibling = e
+	end
+	
+end
+//[cf]
+//[of]:addFirst
+//[c]Inserts an element at the beginning.
+//[c]
+function addFirst (e: *Element)
+
+	e nextSibling = self firstElement
+	e previousSibling = nil
+	if self firstElement notNil
+		self firstElement previousSibling = e
+	end
+	self firstElement = e
+	if self lastElement isNil
+		self lastElement = e
+	end
+
+end
+//[cf]
+//[of]:removeAll
+//[c]Removes all elements from the collection.
+//[c]
+function removeAll
+	self initialize
+end
+//[cf]
+//[of]:remove
+//[c]Removes an element
+//[c]
+function remove (e: *Element)
+
+	if self firstElement == e
+		self firstElement = e nextSibling
+	end
+	if self lastElement == e
+		self lastElement = e previousSibling
+	end
+	if e previousSibling notNil
+		e previousSibling nextSibling = e nextSibling
+	end
+	if e nextSibling notNil
+		e nextSibling previousSibling = e previousSibling
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+function each
+
+	var e = self firstElement
+	while e notNil
+		yield e
+		e = e nextSibling
+	end
+
+end
+//[cf]
+//[of]:safeEach
+//[c]Enumerates all elements
+//[c]
+//[c]REMARKS
+//[c]	Similar to each, but the current element can be removed
+//[c]	or deleted during the enumeration.
+//[c]
+function safeEach
+
+	var e = self firstElement
+	while e notNil
+		var next = e nextSibling
+		yield e
+		e = next
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isEmpty
+function isEmpty
+	return self firstElement isNil
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:LinkCollectionElement
+struct LinkCollectionElement (Element)
+	var nextSibling	: *Element
+	var previousSibling	: *Element
+
+//[of]:	testing
+//[of]:isFirst
+//[c]Returns true if the element is the first element of the collection.
+//[c]
+function isFirst
+	return self previousSibling isNil
+end
+//[cf]
+//[of]:isLast
+//[c]Returns true if the element is the last element of the collection.
+//[c]
+function isLast
+	return self nextSibling isNil
+end
+//[cf]
+//[cf]
+end
+//[cf]
+
+//[of]:Dictionary
+//[c]The hashtable class
+//[c]
+//[c]PARAMETERS
+//[c]	Key	--	The type of keys
+//[c]	Value	--	The type of values
+//[c]	emptyKey	--	A special empty key that will never be used as a key, usually 'nil'
+//[c]	defaultValue	--	The value to return when the key is absent, usually 'nil'
+//[c]	hashFunction	--	The function to hash keys
+//[c]	compareFunction	--	The function to compare keys
+//[c]	
+struct Dictionary (Key, Value, emptyKey, defaultValue, hashFunction, compareFunction)
+
+	// Private
+	var associations	: *[] Association	// An array of (key, value) pairs
+	var tally	: Index	// Number of used slots
+	var allocated	: Index	// Total number of slots
+	var collisions	: Index	// Maximum of collisions occured
+			// It is an upper bound: after removing an association the
+			// value may not be up to date
+
+//[of]:	initialize - release
+//[of]:initialize
+//[c]Initializes the dictionary
+//[c]
+function initialize
+
+	self collisions	= 0
+	self tally	= 0
+	self allocated	= defaultAllocated
+	self associations	= Association allocateArray (defaultAllocated)
+	
+	self eachAssociation do a
+		a key = emptyKey
+	end
+
+end
+//[cf]
+//[of]:release
+//[c]Releases the dictionary
+//[c]
+function release
+
+	// it is the responsibility of the sub-class to free the keys and values
+	Association freeArray (self associations, self allocated)
+
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+//[c]Puts value
+//[c]
+//[c]There must be at least one free slot.
+//[c]If there were already a value at this slot, the old value is returned.
+//[c]In such a case, the returned value, and the passed key are no more
+//[c]referenced by the dictionary, it is the responsibility of the sub-class
+//[c]to free them.
+//[c]
+function add (k: Key, v: Value)
+
+	var location	= self slot (k)
+	var count	= Index : 1
+	
+	repeat
+		var a = self associations [location]
+		if a notEmpty
+			if self isEqual (k, a key)
+				var old = a value
+				a key = k	// It is the same value but not necessarily the same object (the key may be attached to the old value)
+				a value = v
+				return old
+			else
+				location ++
+				if location == self allocated
+					location = 0
+				end
+				count ++
+			end
+		else
+			a key = k
+			a value = v
+			if count > self collisions
+				self collisions = count
+			end
+			self increaseTally
+			return defaultValue
+		end
+	end
+
+end
+//[cf]
+//[of]:addIfExists
+//[c]Same as add but execute the given block if there is already a value
+//[c]with the same key. It can be useful to delete the previous key
+//[c]and value.
+//[c]
+function addIfExists (k: Key, v: Value)
+
+	var location = self slot (k)
+	var count = Integer : 1
+	
+	repeat
+		var a = self associations [location]
+		if a notEmpty
+			if self isEqual (k, a key)
+				yield a key, a value
+				a key = k	// It is the same value but not necessarily the same object (the key may be attached to the old value)
+				a value = v
+				return
+			else
+				location ++
+				if location == self allocated
+					location = 0
+				end
+				count ++
+			end
+		else
+			a key = k
+			a value = v
+			if count > self collisions
+				self collisions = count
+			end
+			self increaseTally
+			return
+		end
+	end
+
+end
+//[cf]
+//[of]:remove
+//[c]Removes an item
+//[c]
+//[c]Returns the item for the given key or nil if not found
+//[c]
+function remove (k: Key)
+
+	var location = self slot (k)
+	var count = self collisions
+	while count > 0
+		var a = self associations [location]
+		if a isEmpty
+			break
+		elsif self isEqual (k, a key)
+			a key = emptyKey
+			location ++
+			if location == self allocated
+				location = 0
+			end
+			self fillUp (location) // useless if we are going to resize
+			self decreaseTally
+			return
+		end
+		location ++
+		if location == self allocated
+			location = 0
+		end
+		count --
+	end
+
+end
+//[cf]
+//[of]:removeAll
+//[c]Removes all items
+//[c]
+function removeAll
+
+	self eachAssociation do a
+		a key = emptyKey
+	end
+	self tally = 0
+
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:eachKeyAndValue
+//[c]Enumerates keys and values
+//[c]
+function eachKeyAndValue
+
+	self eachAssociation do a
+		if a notEmpty
+			yield a key, a value
+		end
+	end
+
+end
+//[cf]
+//[of]:eachKey
+//[c]Enumerates keys
+//[c]
+function eachKey
+
+	self eachAssociation do a
+		if a notEmpty
+			yield a key
+		end
+	end
+
+end
+//[cf]
+//[of]:eachValue
+//[c]Enumerates values
+//[c]
+function eachValue
+
+	self eachAssociation do a
+		if a notEmpty
+			yield a value
+		end
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:size
+//[c]Returns the numbers of elements in the dictionary
+//[c]
+function size
+	return self tally
+end
+//[cf]
+//[of]:[]
+//[c]Finds a value
+//[c]
+//[c]	Returns the value for the given key
+//[c]
+function _at (k: Key)
+
+	var location = self slot (k)
+	var count = self collisions
+	while count > 0
+		var a = self associations [location]
+		if a isEmpty
+			break
+		elsif self isEqual (a key, k)
+			return a value 
+		end
+		location ++
+		if location == self allocated
+			location = 0
+		end
+		count --
+	end
+	return defaultValue
+
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:isEmpty
+function isEmpty
+	return self tally == 0
+end
+//[cf]
+//[of]:hasKey
+//[c]Tests if the dictionary has the given key
+//[c]
+function hasKey (k: Key)
+
+	var location = self slot (k)
+	var count = self collisions
+	while count > 0
+		var a = self associations [location]
+		if a isEmpty
+			break
+		elsif self isEqual (a key, k)
+			return true
+		end
+		location ++
+		if location == self allocated
+			location = 0
+		end
+		count --
+	end
+	return false
+
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const defaultAllocated = Index : 10
+//[cf]
+//[of]:resize
+//[c]Resizes the list of associations
+//[c]
+function resize (s: Index)
+
+	var c = Index : 0
+	var a = Association allocateArray (s)
+	
+	eachAssociation (a, s) do e
+		e key = emptyKey
+	end
+
+	self eachKeyAndValue do key, value
+		var count = Index : 1
+		var location = self hash (key, s)
+		while a [location] notEmpty
+			location ++
+			if location == s
+				location = 0
+			end
+			count ++
+		end
+		a [location] key = key
+		a [location] value = value
+		c = max (count, c)
+	end
+	
+	Association freeArray (self associations, self allocated)
+	
+	self collisions	= c
+	self associations	= a
+	self allocated	= s
+
+end
+//[cf]
+//[of]:increaseTally
+//[c]Increases the counter of items
+//[c]Grow the array if more than 75% of slots are used
+//[c]
+function increaseTally
+	self tally ++
+	if self tally * 4 > self allocated * 3
+		self resize (self allocated * 3 / 2)
+	end
+end
+//[cf]
+//[of]:decreaseTally
+//[c]Decreases the counter of items
+//[c]Reduce the array if less than 30% of slots are used
+//[c]
+function decreaseTally
+	self tally --
+	if self tally * 3 < self allocated
+		self resize (max (defaultAllocated, self allocated * 2 / 3))
+	end
+end
+//[cf]
+//[of]:fillUp
+//[c]Fixes collisions after freeing a slot
+//[c]
+function fillUp (position: Index)
+
+	var current = position
+	repeat
+		var key = self associations [current] key
+		if key == emptyKey
+			break
+		end
+		var best = self slot (key)
+		var count = Index : 0
+		if current <> best
+			while self associations [best] notEmpty
+				best ++
+				if best == self allocated
+					best = 0
+				end
+				count ++
+			end
+		end
+		if current <> best
+			self associations [best] set (self associations [current])
+			self associations [current] key = emptyKey
+			self collisions = max (self collisions, count)
+		end
+		current ++
+		if current == self allocated
+			current = 0
+		end
+	end
+
+end
+//[cf]
+//[of]:hash
+function hash (k: Key, mod: Index)
+	return (hashFunction call (k) cast (Index)) umod (mod)
+end
+//[cf]
+//[of]:isEqual
+function isEqual (k1: Key, k2: Key)
+	return compareFunction call (k1, k2)
+end
+//[cf]
+//[of]:slot
+function slot (k: Key)
+	return self hash (k, self allocated)
+end
+//[cf]
+//[of]:eachAssociation
+function eachAssociation
+	self allocated each do i
+		yield self associations [i]
+	end
+end
+//[cf]
+
+//[of]:Association
+//[c]Just a pair of key and value
+//[c]
+static struct Association
+	var key	: Key
+	var value	: Value
+
+	function set (src: *Association)
+		self key	= src key
+		self value	= src value
+	end
+	
+	function isEmpty
+		return self key == emptyKey
+	end
+	
+end
+//[cf]
+//[of]:eachAssociation
+static function eachAssociation (a: *[]Association, s: Index)
+	s each do i
+		yield a [i]
+	end
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+//[of]:SimpleDictionary
+//[c]A dictionary where the hash function is the 'hash' function of the key
+//[c]and the compareFunction is the 'isEqual' function of the key.
+//[c]
+struct SimpleDictionary (Key, Value, emptyKey, defaultValue) : 
+	Dictionary (	Key, 
+		Value, 
+		emptyKey, 
+		defaultValue, 
+		ref (Key) hash, 
+		ref (Key) isEqual (Key))
+end
+//[cf]
+//[of]:IdentitySet
+struct IdentitySet (T)
+
+	// Private
+	var associations	: *[] T	// buffer to all elements
+	var tally	: Index	// number of used slots
+	var allocated	: Index	// total number of slots
+	var collisions	: Index	// maximum of collisions occured
+			// It is an upper bound: after removing an association the
+			// value may not be up to date
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize
+	self collisions	= 0
+	self tally	= 0
+	self allocated	= defaultAllocated
+	self associations	= self newArray (defaultAllocated)
+end
+//[cf]
+//[of]:release
+function release
+	T freeArray (self associations, self allocated)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:size
+//[c]Returns the number of elements in the set
+//[c]
+function size
+	return self tally
+end
+//[cf]
+//[cf]
+//[of]:	adding - removing
+//[of]:add
+//[c]Adds an object to the list.
+//[c]
+//[c]PARAMETERS
+//[c]	v	--	The value to add.
+//[c]
+//[c]RETURN VALUES
+//[c]	True if the value has been added, false if the value was already there.
+//[c]
+function add (v: T)
+
+	var location = self slot (v)
+	var count = Index : 1
+	repeat
+		var a = self associations [location]
+		if a == v
+			// the object is already in list
+			return false
+		elsif a isNil
+			self associations [location] = v
+			if count > self collisions
+				self collisions = count
+			end
+			self increaseTally
+			return true
+		end
+
+		location ++
+		if location == self allocated
+			location = 0
+		end
+		count ++
+	end
+
+end
+//[cf]
+//[of]:removeAll
+function removeAll
+
+	var p = self associations
+	var limit = p + self allocated
+	while p < limit
+		p [] = nil
+		p ++
+	end
+
+	self collisions = 0
+	self tally = 0
+
+end
+//[cf]
+//[cf]
+//[of]:	enumerating
+//[of]:each
+//[c]Enumerates values
+//[c]
+function each
+	self allocated each do i
+		var obj = self associations [i]
+		if obj notNil
+			yield obj
+		end
+	end
+end
+//[cf]
+//[cf]
+//[of]:	testing
+//[of]:has
+//[c]Returns true if the given object is already in the set
+//[c]
+function has (v: T)
+
+	var location = self slot (v)
+	var count = self collisions
+	while count > 0
+		var a = self associations [location]
+		if a == v
+			return true
+		elsif a isNil
+			break 
+		end
+		location ++
+		if location == self allocated
+			location = 0
+		end
+		count --
+	end
+	return false
+
+end
+//[cf]
+//[of]:isEmpty
+function isEmpty
+	return self tally == 0
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const defaultAllocated = Index : 10
+//[cf]
+//[of]:resize
+//[c]Resizes the list of associations
+//[c]
+function resize (s: Index)
+
+	var c = Index : 0
+	var a = self newArray (s)
+	self each do obj
+		var count = Index : 1
+		var location = (self hash (obj) cast (Index)) umod (s)
+		while a [location] notNil
+			location ++
+			if location == s
+				location = 0
+			end
+			count ++
+		end
+		a [location] = obj
+		c = max (count, c)
+	end
+	T freeArray (self associations, self allocated)
+	self collisions	= c
+	self associations	= a
+	self allocated	= s
+
+end
+//[cf]
+//[of]:increaseTally
+//[c]Increases the counter of items
+//[c]Grow the array if more than 75% of slots are used
+//[c]
+function increaseTally
+
+	self tally ++
+	if self tally * 4 > self allocated * 3
+		self resize (self allocated * 3 / 2)
+	end
+
+end
+//[cf]
+//[of]:hash
+function hash (obj: T)
+	return obj cast (Size)
+end
+//[cf]
+//[of]:slot
+function slot (obj: T)
+	return (self hash (obj) cast (Index)) umod (self allocated)
+end
+//[cf]
+//[of]:newArray
+function newArray (s: Index)
+
+	var a	= T allocateArray (s)
+	var p	= a
+	var l	= p + s
+	while p < l
+		p [] = nil
+		p ++
+	end
+	return a
+
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[cf]
+//[of]:Console
+//[of]:output
+//[c]Formats a string and output it to the standard output
+//[c]
+//[c]PARAMETERS
+//[c]	template	--	The template, \a's will be replaced by additional arguments
+//[c]	...	--	Additional arguments. Any type that implement addToStringBuffer is valid
+//[c]
+function output (template: String, ...)
+	var sb : StringBuffer
+	sb initialize
+	sb printFormat (template, ...)
+	println (sb string)
+	sb release
+end
+//[cf]
+//[of]:println
+//[c]Prints a string to the standard output and add a new line
+//[c]
+function println (s: String)
+	print (s)
+	putchar (Char : 'lf toInteger)
+end
+//[cf]
+//[of]:print
+//[c]Print the string to the standard output
+//[c]
+function print (s: String)
+	s eachChar do c
+		putchar (c toInteger)
+	end
+end
+//[cf]
+//[cf]
+//[of]:Error
+//[of]:ErrorCode
+//[c]An error code identifies uniquely a type of error.
+//[c]
+//[c]It is defined as a structure of a single byte, it's a way to allocate a unique
+//[c]identifier (two identifiers can not occupy the same address). The value
+//[c]of the byte is irrelevant.
+//[c]
+struct ErrorCode
+	var dummy : Byte	// A dummy byte to have a non empty structure
+end
+//[cf]
+//[of]:Error
+struct Error
+	var code	: *ErrorCode
+	var class	: *ErrorClass
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (class: *ErrorClass, code: *ErrorCode)
+	self class	= class
+	self code	= code
+end
+//[cf]
+//[of]:delete
+function delete
+	if self notNil
+		self class delete call (self)
+	end
+end
+//[cf]
+//[cf]
+//[of]:	input - output
+//[of]:addToStringBuffer
+function addToStringBuffer (sb: *StringBuffer)
+	self class getMessage call (self, sb)
+end
+//[cf]
+//[cf]
+//[of]:	utility
+//[of]:	|
+//[c]Returns the first of two errors. The last one is garbaged.
+//[c]
+function _or (other: *Error)
+	if self notNil
+		other delete
+		return self
+	else
+		return other
+	end
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:ErrorClass
+struct ErrorClass
+	var getMessage	: &(*Error, *StringBuffer)
+	var delete	: &(*Error)
+end
+//[cf]
+//[of]:SimpleError
+//[c]A generic error storing just a code and a message.
+//[c]The message can be formatted when creating the object.
+//[c]
+struct SimpleError : Error
+	var message	: String
+
+//[of]:	instance creation
+//[of]:new
+meta function new (code: *ErrorCode, message: String, ...)
+	var err = self allocate
+	err initialize (code, message, ...)
+	return err
+end
+//[cf]
+//[cf]
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (code: *ErrorCode, message: String, ...)
+
+	self class	= {	ref (*SimpleError) addMessageTo (*StringBuffer),
+			ref (*SimpleError) onDelete }
+	self code	= code
+
+	var buf : StringBuffer
+	buf initialize
+	buf printFormat (message, ...)
+	self message	= buf toString
+	buf release
+
+end
+//[cf]
+//[of]:onDelete
+function onDelete
+	self message delete
+	SimpleError free (self)
+end
+//[cf]
+//[cf]
+//[of]:	accessing
+//[of]:addMessageTo
+function addMessageTo (sb: *StringBuffer)
+	sb << self message
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:SystemError
+//[c]SystemError encapsulates an error from the operating system (GetLastError on 
+//[c]Windows, errno on Linux).
+//[c]
+var ErrorCodeSystem : ErrorCode
+
+struct [windows] SystemError : Error
+
+	var error	: DWORD
+
+	function initialize
+		var class	= *ErrorClass : {	ref (*SystemError) addMessageTo (*StringBuffer),
+				ref (*SystemError) onDelete}
+		self super initialize (class, ErrorCodeSystem)
+		self error	= GetLastError
+	end
+
+	function onDelete
+		SystemError free (self)
+	end
+	
+	function addMessageTo (out: *StringBuffer)
+		var buf : [1] String
+		var res = FormatMessage (	FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, 
+			nil,
+			self error, 
+			LANG_USER_DEFAULT, 
+			buf cast (LPWSTR), 
+			4096,
+			nil)
+		if res <> 0
+			var message = buf []
+			out << message
+			LocalFree (message)
+		end
+	end
+end
+//[c]
+struct [unix] SystemError : Error
+
+	var error	: Integer
+
+	function initialize
+		var class	= *ErrorClass : {	ref (*SystemError) addMessageTo (*StringBuffer),
+				ref (*SystemError) onDelete}
+		self super initialize (class, ErrorCodeSystem)
+		self error	= get_errno cast (Integer)
+	end
+
+	function onDelete
+		SystemError free (self)
+	end
+	
+	function addMessageTo (out: *StringBuffer)
+		out << String : "errno = " << self error
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:File
+//[of]:Constants
+//[c]System Dependent Constants
+//[c]
+const [windows]	pathSeparator	= CodeUnit : $\
+const [unix]	pathSeparator	= CodeUnit : $/
+//[c]
+//[c]File Errors
+//[c]
+var ErrorCodeFileTooBig : ErrorCode
+//[cf]
+//[of]:File
+//[c]A File is an object to read or write the content of a file
+//[c]
+struct File
+	// Private
+	var [windows]	handle	: HANDLE
+	var [unix]	handle	: *FILE
+
+//[of]:	class - accessing
+//[of]:getSize64
+//[c]Returns the size of the file.
+//[c]
+//[c]RETURN VALUES
+//[c]	size	--	The file size as a 64 bit integer.
+//[c]	error	--	An error object or nil.
+//[c]
+meta function [windows] getSize64 (filename: String) : Int64, *Error
+
+	var h = fileHandle (filename)
+	if h == INVALID_HANDLE_VALUE
+		return 0, SystemError new
+	end
+	var size : [1] Int64
+	var res = GetFileSizeEx (h, size)
+	CloseHandle (h)
+	if res == 0
+		return 0, SystemError new
+	end
+	return size [], nil
+
+end
+//[c]
+meta function [unix] getSize64 (filename: String) : Int64, *Error
+
+	var s = toFilename (filename)
+	var size = file_size (s) cast (Int64)
+	deleteFilename (s)
+	if size == -1
+		return 0, SystemError new
+	end
+	return size, nil
+
+end
+//[cf]
+//[of]:getSize
+//[c]Returns the file size as a Size type.
+//[c]
+//[c]RETURN VALUES
+//[c]	size	--	The file size as an integer.
+//[c]	err	--	An error object.
+//[c]
+//[c]REMARKS
+//[c]	If the file exceeds the Size limit, a specific error code is returned.
+//[c]	
+//[c]	The limit depends on the platform: 
+//[c]	* on 32 bit platform the size is limited to 4GB - 1,
+//[c]	* on 64 bit platform the size is not limited.
+//[c]
+meta function getSize (filename: String) : Size, *Error
+
+	var size, err = File getSize64 (filename)
+	if err notNil
+		return 0, err
+	end
+	
+	// If the size exceeds the Size type limit, return an error
+	if size cast (Uint64) > (Size:-1) cast (Uint64)
+		return 0, SimpleError new (ErrorCodeFileTooBig, msgTooBig, filename)
+	end
+	
+	return size cast (Size), nil
+
+end
+
+static const msgTooBig	= String : "Can't get size of file \a: over 4GB"	// filename
+//[cf]
+//[of]:baseName
+//[c]Returns the base name of the filename in a new string.
+//[c]
+meta function baseName (filename: String)
+	var buf : StringBuffer
+	buf initialize
+	File addBaseNameTo (buf, filename)
+	var s = buf toString
+	buf release
+	return s
+end
+//[cf]
+//[of]:path
+//[c]Returns the base name of the filename in a new string.
+//[c]
+meta function path (filename: String)
+	var buf : StringBuffer
+	buf initialize
+	File addPathTo (buf, filename)
+	var s = buf toString
+	buf release
+	return s
+end
+//[cf]
+//[of]:name
+//[c]Returns the base name of a filename without extension.
+//[c]
+meta function name (filename: String)
+	var buf : StringBuffer
+	buf initialize
+	File addNameTo (buf, filename)
+	var s = buf toString
+	buf release
+	return s
+end
+//[cf]
+
+//[of]:addBaseNameTo
+//[c]Gets the base name of a filename.
+//[c]
+meta function addBaseNameTo (out: *StringBuffer, filename: String)
+
+	var occurrence = filename findLastCodeUnit (pathSeparator)
+	if occurrence notNil
+		out << occurrence + 1
+	else
+		out << filename
+	end
+
+end
+//[cf]
+//[of]:addNameTo
+//[c]Gets the base name of a filename without extension.
+//[c]
+meta function addNameTo (out: *StringBuffer, filename: String)
+
+	var occurrence = filename findLastCodeUnit (pathSeparator)
+	if occurrence notNil
+		var p = occurrence + 1
+		var q = p findLastCodeUnit ($.)
+		if q notNil
+			out addSubString (p, p to (q))
+		else
+			out << p
+		end
+	else
+		out << filename
+	end
+
+end
+//[cf]
+//[of]:addPathTo
+//[c]Gets the path of a filename.
+//[c]
+//[c]PARAMETERS
+//[c]	out	--	The buffer where the path is added.
+//[c]
+meta function addPathTo (out: *StringBuffer, filename: String)
+
+	var occurrence = filename findLastCodeUnit (pathSeparator)
+	if occurrence notNil
+		out addSubString (filename, occurrence ~ filename)
+	end
+
+end
+//[cf]
+//[of]:addNativeNameTo
+//[c]Replaces the path separator with the native path separator in the given filename.
+//[c]
+//[c]PARAMETERS
+//[c]	nativeName	--	the buffer where the native name is appended
+//[c]
+meta function addNativeNameTo (out: *StringBuffer, filename: String)
+
+	filename eachCodeUnit do x
+		var c = x
+		if c == altPathSeparator
+			c = pathSeparator
+		end
+		out << c
+	end
+
+end
+//[cf]
+//[cf]
+//[of]:	class - converting
+//[of]:expandFullNameTo
+//[c]Fills the given buffer with the fully qualified name of filename
+//[c]
+//[c]PARAMETERS
+//[c]	out	--	the buffer where the result is appended
+//[c]
+//[c]REMARKS
+//[c]	* . and .. are eliminated
+//[c]	* Consecutives path separators are simplified
+//[c]	* On Unix, ~ is expanded
+//[c]	* On Windows, /'s are replaced by \
+//[c]	
+meta function [windows] expandFullNameTo (out: *StringBuffer, filename: String)
+
+	// Already a fully qualified name ?
+	if not File isAbsolute (filename)
+		var buf : [1024] CodeUnit
+		var cwd = buf : String
+		if GetCurrentDirectory (1024, cwd) <> 0
+			// The filename starts with '\': just pick up drive
+			if filename [0] == $\
+				if cwd size >= 2
+					out << cwd [0]
+					out << cwd [1]
+				end
+			else
+				out << cwd << pathSeparator
+			end
+		end
+	end
+
+	// replace all $/ by $\ 
+	addPathPart (filename, out)
+	normalize (out)
+
+end
+//[c]
+meta function [unix] expandFullNameTo (out: *StringBuffer, filename: String)
+
+	var p = filename
+	if p[0] == $~ and (p[1] isNul or p[1] == $/)
+		var path = getenv ("HOME") fromFilename
+		out << path
+		path delete
+		p ++
+	// Already a fully qualified name ?
+	elsif p[0] <> $/
+		var buf : [1024] Uint8
+		if getcwd (buf, 1024) notNil
+			var path = buf fromFilename
+			out << path
+			path delete
+			out << $/
+		end
+	end
+
+	out << p
+	out normalize
+
+end
+//[cf]
+//[of]:resolveFullNameTo
+//[c]Prepends the filename with the directory if the filename is
+//[c]not fully qualified.
+//[c]
+//[c]PARAMETERS
+//[c]	directory	-- The directory to use if the filename is a relative filename.
+//[c]	fullName	-- The buffer where the result is appended.
+//[c]
+//[c]REMARKS
+//[c]	* . and .. are eliminated
+//[c]	* Consecutives path separators are simplified
+//[c]	* On Windows, /'s are replaced by \
+//[c]
+meta function [windows] resolveFullNameTo (out: *StringBuffer, directory: String, filename: String)
+
+	// Already a fully qualified name ?
+	if not File isAbsolute (filename)
+		// Replace all $/ by $\ 
+		addPathPart (directory, out)
+		
+		// Add a separator if there isn't one already
+		if out last <> pathSeparator
+			out << pathSeparator
+		end
+	end
+
+	// replace all $/ by $\ 
+	addPathPart (filename, out)
+	normalize (out)
+
+end
+//[c]
+meta function [unix] resolveFullNameTo (directory: String, filename: String, out: *StringBuffer)
+
+	// Already a fully qualified name ?
+	if filename [0] <> $/
+		out << directory << $/
+	end
+
+	out << filename
+	normalize (out)
+
+end
+//[cf]
+//[of]:resolveRelativeNameTo
+//[c]Removes the directory to the filename if it is under this directory.
+//[c]
+//[c]PARAMETERS
+//[c]	directory	-- The directory to use if the filename is a relative filename.
+//[c]	relativeName	-- The buffer where the result is appended.
+//[c]
+//[c]REMARKS
+//[c]	The directory must not ends with a path separator, on Windows a root
+//[c]	disk will look like 'C:', on Unix it will be an empty string.
+//[c]
+//[c]	The directory and the filename must be in the native format (with \
+//[c]	as path separators on Windows).
+//[c]
+meta function resolveRelativeNameTo (out: *StringBuffer, directory: String, filename: String)
+
+	var fnSize = filename size
+	var dirSize = directory size
+	
+	if fnSize >= dirSize
+		if filename asSubString isEqualNoCase (dirSize, directory, dirSize)
+			if filename [dirSize] == pathSeparator
+				out << (filename + dirSize + 1)
+				return
+			elsif filename [dirSize] isNul
+				out addChar ($.)
+				return
+			end
+		end
+	end
+	
+	// Return the original filename
+	out << filename
+
+end
+//[cf]
+
+//[of]:fullName
+//[c]Prepends the filename with the directory if the filename is
+//[c]not fully qualified.
+//[c]
+//[c]PARAMETERS
+//[c]	directory	--	The directory to use if the filename is a relative 
+//[c]			filename or nil to use the current directory.
+//[c]	filename	--	The absolute or relative filename.
+//[c]
+//[c]RETURN VALUES
+//[c]	A new string containing the full name.
+//[c]
+//[c]REMARKS
+//[c]	* . and .. are eliminated
+//[c]	* Consecutives path separators are simplified
+//[c]	* On Windows, /'s are replaced by \
+//[c]
+meta function fullName (directory: String, filename: String)
+	var buf : StringBuffer
+	buf initialize
+	if directory notNil
+		File resolveFullNameTo (buf, directory, filename)
+	else
+		File expandFullNameTo (buf, filename)
+	end
+	var s = buf toString
+	buf release
+	return s
+end
+//[cf]
+//[cf]
+//[of]:	class - operations
+//[of]:copyFileTo
+meta function copyFileTo (dstFilename: String, srcFilename: String)
+
+	var bufSize = Size : 65536
+	var buf = allocateBytes (bufSize)
+
+	var err	: *Error	// The result
+	var src	: *File	// The source file
+	var dst	: *File	// The destination file
+	var n	: Size	// The number of bytes read
+	var w	: Size	// The number of bytes written
+	
+	src, err = File openRead (srcFilename)
+	if err isNil
+		dst, err = File openWrite (dstFilename)
+		if err isNil
+			repeat
+				n, err = src read (buf, bufSize)
+				if n == 0 or err notNil
+					break
+				end
+				w, err = dst write (buf, n)
+				if err notNil
+					break
+				end
+			end
+			var err2 = dst close
+			err = err | err2
+		end
+		var err2 = src close
+		err = err | err2
+	end
+	
+	freeBytes (buf, bufSize)
+	return err
+
+end
+//[cf]
+//[of]:createDirectories
+//[c]Create all intermediary directories for the given filename
+//[c]
+//[c]NOTE: no result code returned
+//[c]
+meta function createDirectories (filename: String) :
+
+	var path : StringBuffer
+	path initialize
+	
+	File addPathTo (path, filename)
+	var parent = path string
+
+	if parent notEmpty and
+		// hack for windows: detect drive
+		(parent [1] <> $: or parent [2] notNul)
+		
+		File createDirectories (parent)
+		var err = File createDirectory (parent)
+		err delete // ignore error
+	end
+
+	path release
+
+end
+//[cf]
+//[of]:createDirectory
+//[c]Creates a new directory.
+//[c]
+//[c]RETURN VALUES
+//[c]	Returns an error object or nil if the operation succeeded.
+//[c]
+meta function [windows] createDirectory (name: String)
+
+	var res = CreateDirectory (name, nil)
+	return res <> 0 cond nil else SystemError new
+
+end
+//[c]
+meta function [unix] createDirectory (name: String)
+
+	var mode = ((7 << 6) | (5 << 3) | 5) : Mode
+	var s = toFilename (name)
+	var res = mkdir (s, mode)
+	deleteFilename (s)
+	return res == 0 cond nil else SystemError new
+
+end
+//[cf]
+//[of]:delete
+//[c]Deletes the file
+//[c]
+//[c]RETURN VALUES
+//[c]	Returns an error object or nil if the operation succeeded.
+//[c]
+meta function [windows] delete (filename: String)
+
+	var res = DeleteFile (filename)
+	return res <> 0 cond nil else SystemError new
+
+end
+//[c]
+meta function [unix] delete (filename: String)
+
+	var s = toFilename (filename)
+	var res = unlink (s)
+	deleteFilename (s)
+	return res <> 0 cond nil else SystemError new
+
+end
+//[cf]
+//[of]:openRead
+//[c]Open a file in read mode
+//[c]
+//[c]RETURN VALUES
+//[c]	A newly created file on success, nil if failed and an error code
+//[c]
+//[c]REMARKS
+//[c]	The file must be closed with the close function when operations on 
+//[c]	the file are completed.
+//[c]
+meta function [windows] openRead (filename: String) : *File, *Error
+
+	var handle = fileHandle (filename)
+	if handle == INVALID_HANDLE_VALUE
+		return nil, SystemError new
+	end
+	return File new (handle), nil
+
+end
+//[c]
+meta function [unix] openRead (filename: String) : *File, *Error
+
+	var s = toFilename (filename)
+	var f = fopen (s, "r")
+	deleteFilename (s)
+	if f isNil
+		return nil, SystemError new
+	end
+	return File new (f), nil
+
+end
+//[cf]
+//[of]:openWrite
+//[c]Open a file in write mode
+//[c]
+//[c]RETURN VALUES
+//[c]	A newly created file on success, nil if failed.
+//[c]
+//[c]REMARKS
+//[c]	The file must be closed with the close function when operations on 
+//[c]	the file are completed.
+//[c]
+meta function [windows] openWrite (filename: String) : *File, *Error
+
+	var handle = CreateFile (	filename,
+		GENERIC_WRITE,
+		0,
+		nil,
+		CREATE_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		nil)
+
+	if handle == INVALID_HANDLE_VALUE
+		return nil, SystemError new
+	end
+	return File new (handle), nil
+
+end
+//[c]
+meta function [unix] openWrite (filename: String) : *File, *Error
+
+	var s = toFilename (filename)
+	var f = fopen (s, "w")
+	deleteFilename (s)
+	if f isNil
+		return nil, SystemError new
+	end
+	return File new (f), nil
+
+end
+//[cf]
+//[of]:readContent
+//[c]Loads the content into a memory buffer.
+//[c]
+//[c]PARAMETERS
+//[c]	buffer	--	The memory buffer where the content of the file is append.
+//[c]
+//[c]RETURN VALUES
+//[c]	An Error or nil.
+//[c]	
+meta function readContent (buffer: *MemoryBuffer, filename: String)
+
+	var err	: *Error	// The result of the operation.
+	var f	: *File	// The file to read.
+	var size	: Size	// The size of the file to read.
+	var n	: Size	// The number of bytes read.
+	
+	size, err = File getSize (filename)
+	if err isNil
+		f, err = File openRead (filename)
+		if err isNil
+			var base = buffer allocate (size)
+			n, err = f read (base, size)
+			var err2 = f close
+			err = err | err2
+		end
+	end
+	return err
+
+end
+//[cf]
+//[cf]
+//[of]:	class - testing
+//[of]:exists
+//[c]Returns true if the file exists
+//[c]
+meta function [windows] exists (filename: String)
+	var attributes = GetFileAttributes (filename)
+	if attributes == 0xFFFFFFFF
+		return false
+	end
+	return (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0
+end
+//[c]
+meta function [unix] exists (filename: String)
+	var s = toFilename (filename)
+	var exists = file_exists (s) <> 0
+	deleteFilename (s)
+	return exists
+end
+//[cf]
+//[of]:isAbsolute
+meta function [windows] isAbsolute (filename: String)
+	// Already a fully qualified name ?
+	return	filename size > 1 and 
+		(filename [1] == $: or (filename [0] == $\ and filename [1] == $\))
+end
+//[c]
+meta function [unix] isAbsolute (filename: String)
+	return	filename [0] == $/
+end
+//[cf]
+//[of]:isReadOnly
+//[c]Returns true if the file is read only.
+//[c]
+//[c]REMARKS
+//[c]	The functions returns false if the file does not exist.
+//[c]
+meta function [windows] isReadOnly (filename: String)
+	var attributes = GetFileAttributes (filename)
+	if attributes == 0xFFFFFFFF
+		return false
+	end
+	return (attributes & FILE_ATTRIBUTE_READONLY) <> 0
+end
+//[c]
+meta function [unix] isReadOnly (filename: String)
+	var s = toFilename (filename)
+	var ro = file_read_only (s) <> 0
+	deleteFilename (s)
+	return ro
+end
+//[cf]
+//[of]:isDirectory
+//[c]Returns true if the filename points to an existing directory.
+//[c]
+meta function [windows] isDirectory (filename: String)
+	var attributes = GetFileAttributes (filename)
+	if attributes == 0xFFFFFFFF
+		return false
+	end
+	return (attributes & FILE_ATTRIBUTE_DIRECTORY) <> 0
+end
+//[c]
+meta function [unix] isDirectory (filename: String)
+	var s = toFilename (filename)
+	var dir = file_is_directory (s) <> 0
+	deleteFilename (s)
+	return dir
+end
+//[cf]
+//[of]:isSame
+//[c]Returns true if the two filenames reference the same file. This is platform 
+//[c]dependent: on Unix system the two string must be equals, on Windows the
+//[c]case is not relevant.
+//[c]
+meta function [windows] isSame (filename: String, other: String)
+	return filename isEqualNoCase (other)
+end
+//[c]
+meta function [unix] isSame (filename: String, other: String)
+	return filename isEqual (other)
+end
+//[cf]
+//[of]:matchWildcards
+//[c]Compares a string with a pattern having wildcards (*)
+//[c]
+meta function matchWildcards (filename: String, pattern: String)
+
+	var sp	= nil : String
+	var sq	= nil : String
+	var p	= pattern
+	var q	= filename
+	repeat
+		var c, n = p nextChar
+		if c == $*
+			p += n
+			sp = p
+			sq = q
+			c, n = p nextChar
+		end
+		
+		var d, m = q nextChar
+		if d isNul
+			return c isNul
+		end
+
+		if normalized (c) == normalized (d)
+			p += n
+			q += m
+		else
+			// No previous wild card: no match
+			if sp isNil
+				break
+			end
+			
+			// Assimilate char and restart
+			sq = q + m
+			p = sp
+			q = sq
+		end
+	end
+	return false
+
+end
+//[c]
+//[c]Returns the normalized form of the character:
+//[c]	* On windows, it returns the upper case value of the char as filenames are not case sensitive
+//[c]	* On unix, it returns the character unchanged
+//[c]
+static function [windows] normalized (c: Char)
+	return c toUpper
+end
+//[c]
+static function [unix] normalized (c: Char)
+	return c
+end
+//[cf]
+//[cf]
+
+//[of]:	initialize - release
+//[of]:close
+//[c]Closes the file and release all its resources
+//[c]
+//[c]RETURN VALUES
+//[c]	An error object or nil if the file has been closed successfully.
+//[c]
+//[c]REMARKS
+//[c]	The object is removed from memory after this call. Do not invoke any 
+//[c]	function on it after this call.
+//[c]
+function [windows] close
+
+	var res = CloseHandle (self handle)
+	File free (self)
+	return res <> 0 cond nil else SystemError new
+
+end
+//[c]
+function [unix] close
+
+	var ok = fclose (self handle) == 0
+	File free (self)
+	return ok cond nil else SystemError new
+
+end
+//[cf]
+//[cf]
+//[of]:	reading - writing
+//[of]:read
+//[c]Reads bytes from a file open in read mode
+//[c]
+//[c]PARAMETERS
+//[c]	base	--	A pointer to store the bytes
+//[c]	size	--	The number of bytes to read
+//[c]
+//[c]RETURN VALUES
+//[c]	size	--	The number of bytes read.
+//[c]	error	--	An error object or nil if no error.
+//[c]
+function [windows] read (base: Bytes, size: Size) : Size, *Error
+
+	var read : [1] Uinteger
+	var res = ReadFile (self handle, base, size cast (Uinteger), read, nil)
+	if res == 0
+		return 0, SystemError new
+	end
+	return read [] cast (Size), nil
+
+end
+//[c]
+function [unix] read (base: Bytes, size: Size) : Size, *Error
+
+	var read = fread (base, 1, size, self handle)
+	if read <> size and ferror (self handle) <> 0
+		return 0, SystemError new
+	end
+	return read, nil
+
+end
+//[cf]
+//[of]:write
+//[c]Write data to the file
+//[c]
+//[c]PARAMETERS
+//[c]	base	-- the address of data
+//[c]	size	-- the number of bytes to write
+//[c]
+//[c]RETURN VALUES
+//[c]	size	--	The number of bytes written.
+//[c]	error	--	An error object or nil if no error.
+//[c]
+function [windows] write (base: Bytes, size: Size) : Size, *Error
+
+	var written : [1] Uinteger
+	var res = WriteFile (self handle, base, size cast (Uinteger), written, nil)
+	if res == 0
+		return 0, SystemError new
+	end
+	return written [] cast (Size), nil
+
+end
+//[c]
+function [unix] write (base: Bytes, size: Size) : Size, *Error
+
+	var written = fwrite (base, 1, size, self handle)
+	if written <> size and ferror (self handle) <> 0
+		return 0, SystemError new
+	end
+	return written, nil
+
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static const [windows]	altPathSeparator	= CodeUnit : $/
+static const [unix]	altPathSeparator	= CodeUnit : $\
+//[cf]
+//[of]:initialize
+function [windows] initialize (handle: HANDLE)
+	self handle = handle
+	return self
+end
+//[c]
+function [unix] initialize (handle: *FILE)
+	self handle = handle
+	return self
+end
+//[cf]
+
+//[of]:fileHandle
+static function fileHandle (filename: String)
+
+	return CreateFile (	filename,
+		GENERIC_READ,
+		FILE_SHARE_READ|FILE_SHARE_WRITE,
+		nil,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		nil)
+
+end
+//[cf]
+//[of]:addPathPart
+//[c]Appends filename to the full name and replace any / by \.
+//[c]
+static function addPathPart (filename: String, fullName: *StringBuffer)
+	// replace all $/ by $\ 
+	filename eachCodeUnit do x
+		var c = x
+		if c == $/
+			c = pathSeparator
+		end
+		fullName << c
+	end
+end
+//[cf]
+//[of]:normalize
+//[c]Normalizes a full name.
+//[c]
+//[c]	* reduces '\.'
+//[c]	* reduces '\..'
+//[c]	* reduces '\\' (except initial)
+//[c]
+//[c]	The fullname must be a fully qualified name, i.e. it must starts with '\\' or 'x:\'.
+//[c]
+static function [windows] normalize (fullName: *StringBuffer)
+
+	var s = fullName string
+	if s [0] == $\ and s [1] == $\
+		s ++
+	else
+		// skip unit
+		s += 2
+	end
+	var d = s
+	var start = d
+	
+	repeat
+		var c = s []
+		s ++
+		if c isNul
+			break
+		elsif c == $\
+			// Skip adjacent separators
+			while s [] == $\
+				s ++
+			end
+			if s [0] == $. and (s[1] isNul or s[1] == $\)
+				s ++
+			elsif s[0] == $. and s[1] == $. and (s[2] isNul or s[2] == $\)
+				s += 2
+				var p = d - 1
+				while p >= start
+					if p[] == $\
+						d = p
+						break
+					end
+					p --
+				end
+			else
+				d [] = c
+				d ++
+			end
+		else
+			d [] = c
+			d ++
+		end
+	end
+
+	// Empty: restore the initial '\' (both UNC and x:\)
+	if d == start
+		d [] = $\
+		d ++
+	end
+
+	var base = fullName base
+	fullName removeFrom (d asSubString ~ base)
+end
+//[c]
+static function [unix] normalize (fullName: *StringBuffer)
+
+	var s = fullName string
+	var d = s
+	var start = d
+	
+	repeat
+		var c = s []
+		s ++
+		if c isNul
+			break
+		elsif c == $/
+			// Skip adjacent separators
+			while s [] == $/
+				s ++
+			end
+			if s [0] == $. and (s[1] isNul or s[1] == $/)
+				s ++
+			elsif s[0] == $. and s[1] == $. and (s[2] isNul or s[2] == $/)
+				s += 2
+				var p = d - 1
+				while p >= start
+					if p[] == $/
+						d = p
+						break
+					end
+					p --
+				end
+			else
+				d [] = c
+				d ++
+			end
+		else
+			d [] = c
+			d ++
+		end
+	end
+
+	// Empty: restore the initial '\' (both UNC and x:\)
+	if d == start
+		d [] = $/
+		d ++
+	end
+
+	var base = fullName base
+	fullName removeFrom (d asSubString ~ base)
+end
+//[cf]
+
+//[of]:toFilename
+// ### to fix: convert a string to a filename according to the current locale
+static function [unix] toFilename (filename: String)
+	return filename cast (*[]Uint8)
+end
+
+static function [unix] deleteFilename (filename: *[]Uint8)
+	// empty
+end
+//[cf]
+//[of]:fromFilename
+// ### to fix: convert a filename according to the current locale to a string (UTF-8)
+static function [unix] fromFilename (filename: *[]Uint8)
+	return filename : String
+end
+//[cf]
+//[cf]
+end
+//[cf]
+//[of]:FileError
+//[c]An utility error class to associate a filename to an error. The error
+//[c]can wrap an original error.
+//[c]
+//[c]This class is not used by standard file operations.
+//[c]
+struct FileError : Error
+
+	var filenameHolder	: StringHolder
+	var originalError	: *Error
+	
+	function initialize (	code	: *ErrorClass, 
+		filename	: String,
+		originalError	: *Error)
+	
+		self super initialize (code, ref (*FileError) onDelete)
+		self filenameHolder initializeWithString (filename)
+		self originalError = originalError
+	end
+	
+	function onDelete
+		self originalError delete
+		self filenameHolder release
+		FileError free (self)
+	end
+	
+	function filename
+		return self filenameHolder string
+	end
+
+end
+//[cf]
+//[cf]
+
+//[of]:Private
+.private
+
+//[of]:Text
+//[of]:Constants
+// The maximum number of code units to encode a Unicode character.
+// As a valid Unicode character go from 0 to 10FFFF, the maximum length
+// is 4 code units with UTF-8, 2 code units with UTF-16.
+const [unix]	maxCharSize = StringSize : 4
+const [windows]	maxCharSize = StringSize : 2
+
+const [unix]	singleUnitLimit = Char : 0x80
+const [windows]	singleUnitLimit = Char : 0x10000
+
+const [unix]	CodeUnitBase	= Uint8
+const [windows]	CodeUnitBase	= Uint16
+
+const [unix]	hashShift	= Uint8 : 24
+const [windows]	hashShift	= Uint8 : 16
+
+// An array to store a Unicode character encoded to UTF-8.
+const CodeUnitBuffer = [maxCharSize] CodeUnit
+
+// The length of a UTF-8 encoded char for each possible value of the 
+// first byte.
+const [unix] utf8Lengths  = *[256]Uint8 : {
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+	2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+	3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 0, 0, 0, 0}
+//[cf]
+//[of]:Functions
+//[of]:toSubString
+//[c]Writes the Unicode character to a sub-string.
+//[c]
+//[c]PARAMETERS
+//[c]	char	--	The character to write.
+//[c]	out	--	A buffer of code units to store the sub-string. This buffer
+//[c]			must be 'maxCharSize' unit long (the longest encoding for a valid
+//[c]			Unicode character).
+//[c]
+//[c]RETURN VALUES
+//[c]	start	--	The address of the sub-string. It is the address of the out 
+//[c]			parameter but with SubString type.
+//[c]	size	--	The size of the sub-string.
+//[c]
+function toSubString (char: Char, out: *[]CodeUnit)
+	return out downcast (SubString), out downcast (SubString) writeChar (char)
+end
+//[cf]
+//[cf]
+//[cf]
+
+import [windows]	"private/windows"
+import [unix]	"private/unix"
+
+.cdecl .c
+import function malloc (Size) : (Pointer)
+import function free (Pointer)
+import function putchar (Int32) : Int32
+//[cf]

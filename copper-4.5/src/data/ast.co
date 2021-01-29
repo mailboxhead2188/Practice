@@ -1,0 +1,534 @@
+//[of]:Module
+//[of]:ElementCode
+stype ASTElementCode
+	
+	'module	// The root element
+
+	'function
+	'const
+	'var
+	'struct
+	'type
+	
+	'instanceFunction
+	'instanceConst
+	'instanceVar
+	'instanceStruct
+	'instanceType
+	
+	'metaFunction
+	'metaConst
+	'metaVar
+	'metaStruct
+	'metaType
+	
+	'symbol
+	'import
+	'importFunction
+	'importInstanceFunction
+	'importMetaFunction
+	'extend
+end
+//[cf]
+//[of]:Element
+//[c]ASTElement is the base class of any item defined in a module, struct or type.
+//[c]
+struct ASTElement : Location
+	var nextSibling	: *ASTElement	// Next element in children of a node
+	var code	: ASTElementCode	// The type of element
+	var directives	: *DirectiveSet	// The directives for all variables
+
+	function asType
+		return self downcast (*ASTType)
+	end
+		
+	function asGlobalVariable
+		return self downcast (*ASTGlobalVariable)
+	end
+
+	function asFunction
+		return self downcast (*ASTFunction)
+	end
+	
+	function asExternFunction
+		return self downcast (*ASTExternFunction)
+	end
+	
+	function asAttribute
+		return self downcast (*ASTAttribute)
+	end
+
+	function asAlias
+		return self downcast (*ASTAlias)
+	end
+	
+	function asSymbol
+		return self downcast (*ASTSymbol)
+	end
+	
+	function asImport
+		return self downcast (*ASTImport)
+	end
+
+	function asExtension
+		return self downcast (*ASTExtension)
+	end
+
+end
+//[cf]
+//[of]:Node
+//[c]an ASTNode is an ASTElement with child elements, it is the base class of
+//[c]module, structure and type
+//[c]
+struct ASTNode : ASTElement
+	var children : ASTElementList
+
+	function _shl (e: *ASTElement)
+		if not e directives skip
+			self children add (e)
+		end
+	end
+end
+//[cf]
+//[of]:Module
+struct ASTModule : ASTNode
+
+	var filename	: String	// The filename of the module
+
+	function initialize (filename: String)
+		self code = 'module
+		self children initialize
+		self filename	= filename
+	end
+
+end
+//[cf]
+//[of]:Import
+struct ASTImport : ASTElement
+
+	var name	: String	// The path+name without extension of the module to import
+
+end
+//[cf]
+//[of]:GlobalVariable
+//[c]var v = e
+//[c]var v : T
+//[c]
+struct ASTGlobalVariable : ASTElement
+
+	var name	: Identifier	// The name of the variable
+	var type	: *ASTExpression	// The type or nil
+	var initialValue	: *ASTExpression	// The initial value or nil
+
+end
+//[cf]
+//[of]:Function
+struct ASTFunction : ASTElement
+
+	var name	: Identifier	// The name of the definition
+	var isVariadic	: Bool	// Extra arguments are permitted
+	var isMacro	: Bool	// The body contains one or more yield
+	var generic	: Bool	// The function is generic
+	var selfGeneric	: Bool	// The 'self' implicit parameter is generic (same as other parameters without type)
+	var parameters	: *ASTParameterList	// The list of arguments without 'self' and '...'
+	var returnTypes	: *ASTExpressionList	// The explicit return types or nil
+	var body	: *ASTInstructionList	// The body of the function
+
+end
+//[cf]
+//[of]:ExternFunction
+struct ASTExternFunction : ASTElement
+	var name	: Identifier	// The name of the definition
+	var publicName	: String8	// The name in the imported module
+	var parameters	: *ASTExpressionList	// The list of arguments as expressions
+	var returns	: *ASTExpressionList	// The list of returned types as expressions
+end
+//[cf]
+//[of]:Alias
+//[c]const directives id = expression
+//[c]
+struct ASTAlias : ASTElement
+	var name	: Identifier	// The name of the definition
+	var expression	: *ASTExpression	// The expression
+end
+//[cf]
+//[of]:Type
+//[c]type T [ (parameter-list) ] : Parent
+//[c]
+struct ASTType : ASTNode
+	var name	: Identifier	// The name of the definition
+	var parent	: *ASTExpression	// The parent expression
+	var parameters	: *ASTParameterList	// The name of parameters
+
+	function generic
+		return self parameters notEmpty
+	end
+end
+//[cf]
+//[of]:Extension
+struct ASTExtension : ASTNode
+	var type	: *ASTExpression	// The parent expression
+end
+//[cf]
+
+//[of]:Parameter
+//[c]A function parameter
+//[c]
+struct ASTParameter : Location
+	var nextSibling	: *ASTParameter	// The next parameter
+	var name	: Identifier	// The name of the definition
+	var type	: *ASTExpression	// The type as expression, or nil
+end
+//[cf]
+//[of]:Symbol
+//[c]A symbol definition
+//[c]	'name [ = value]
+//[c]
+struct ASTSymbol : ASTElement
+	var name	: Identifier	// The name of the definition
+	var expression	: *ASTExpression	// The value expression or nil (can be omitted in enums)
+end
+//[cf]
+//[of]:Attribute
+//[c]An attribute definition
+//[c]	var name : type
+//[c]
+struct ASTAttribute : ASTElement
+	var name	: Identifier	// The name of the definition
+	var type	: *ASTExpression	// The expression of the type
+end
+//[cf]
+//[cf]
+//[of]:Instructions
+//[of]:InstructionCode
+stype ASTInstructionCode
+	'evaluate	// e1, e2
+	'assign	// d1, d2 = e1, e2
+	'define	// var v1, v2 = e1, e2
+	'variable	// var v : T, id (...)
+	'alias
+	'return
+	'while
+	'switch
+	'if
+	'break
+	'continue
+	'begin
+	'defer
+end
+//[cf]
+//[of]:Instruction
+//[c]Instruction - encode all kind of instructions found in source code
+//[c]
+struct ASTInstruction : Location
+	var nextSibling	: *ASTInstruction
+	var code	: ASTInstructionCode
+end
+//[cf]
+//[of]:Evaluate
+struct ASTEvaluate : ASTInstruction
+	var values	: *ASTExpressionList	// The list of returned expressions
+end
+//[cf]
+//[of]:Assign
+struct ASTAssign : ASTInstruction
+	var leftValues	: *ASTExpressionList	// The list of left values
+	var rightValues	: *ASTExpressionList	// The list of right values
+end
+//[cf]
+//[of]:LocalVariables
+//[c]var v1, v2, ... = e1, e2, ...
+//[c]
+struct ASTLocalVariables : ASTInstruction
+	var variables	: *ASTIdList	// The list of variables
+	var expressions	: *ASTExpressionList	// The list of values
+end
+//[cf]
+//[of]:LocalVariable
+//[c]var v : T [ , id [ ( expression-list ) ] ]
+//[c]
+struct ASTLocalVariable : ASTInstruction
+	var variable	: Identifier	// The name of the variable
+	var type	: *ASTExpression	// The type
+	var call	: *ASTFreeCall	// The initializer or nil
+end
+//[cf]
+//[of]:LocalAlias
+struct ASTLocalAlias : ASTInstruction
+	var name	: Identifier	// The name of the definition
+	var expression	: *ASTExpression	// The expression
+end
+//[cf]
+//[of]:Return
+struct ASTReturn : ASTInstruction
+	var expressions	: *ASTExpressionList	// The list of returned expressions
+end
+//[cf]
+//[of]:Break
+struct ASTBreak : ASTInstruction
+	var arguments	: *ASTExpressionList	// The list of returned expressions
+end
+//[cf]
+//[of]:While
+struct ASTWhile : ASTInstruction
+	var condition	: *ASTExpression	// The repeat condition, nil for infinite loop
+	var block	: *ASTInstructionList	// The block
+end
+//[cf]
+//[of]:Switch
+struct ASTSwitch : ASTInstruction
+	var value	: *ASTExpression	// The value to check
+	var choices	: ASTChoiceList	// The list of cases
+	var elseBlock	: *ASTInstructionList	// The else block or nil
+end
+//[cf]
+//[of]:If
+struct ASTIf : ASTInstruction
+	var rules	: ASTRuleList	// The list of conditions/actions
+	var elseBlock	: *ASTInstructionList	// The else block or nil
+end
+//[cf]
+//[of]:Rule
+//[c]A condition + block pair found in a if/elsif/else statement.
+//[c]
+struct ASTRule : Location
+	var nextSibling	: *ASTRule	// The next rule
+	var condition	: *ASTExpression	// The boolean expression
+	var block	: *ASTInstructionList	// The block associated to this condition
+end
+//[cf]
+//[of]:Choice
+//[c]A case item found in a switch statement: a list of values and a block.
+//[c]
+struct ASTChoice : Location
+	var nextSibling	: *ASTChoice	// The next choice
+	var values	: *ASTExpressionList	// The list of case values
+	var block	: *ASTInstructionList	// The block to evaluate for this case
+end
+//[cf]
+//[of]:Begin
+struct ASTBegin : ASTInstruction
+	var mainBlock	: *ASTInstructionList	// The main block
+end
+//[cf]
+//[of]:Defer
+struct ASTDefer : ASTInstruction
+	var instruction	: *ASTInstruction
+end
+//[cf]
+//[cf]
+//[of]:Expressions
+//[of]:ExpressionCode
+stype ASTExpressionCode
+	'string
+	'integer
+	'negativeInteger
+	'symbol
+	'sequence
+	'freeCall
+	'contextCall
+	'minimalAnd
+	'minimalOr
+	'functionType
+	'arrayType
+	'functionReference
+	'offset
+	'cond
+	'ellipsis
+	'colon
+	'typeof
+	'pointer
+	'yield
+end
+//[cf]
+//[of]:Expression
+//[c]Expression - encode all kind of expressions found in source code
+//[c]arithmetic expression, definitions, ...
+//[c]
+struct ASTExpression : Location
+	var nextSibling	: *ASTExpression	// The next expression in the collection
+	var code	: ASTExpressionCode	// The implementation code
+
+	function asPair
+		return self downcast (*PairExpression)
+	end
+
+	function asFunction
+		return self downcast (*FunctionExpression)
+	end
+
+	function asOffset
+		return self downcast (*OffsetExpression)
+	end
+
+	function asCond
+		return self downcast (*CondExpression)
+	end
+
+	function asInteger
+		return self downcast (*ASTInteger)
+	end
+
+	function asArray
+		return self downcast (*ASTArray)
+	end
+
+	function asString
+		return self downcast (*ASTString)
+	end
+
+	function asSymbol
+		return self downcast (*ASTSymbolName)
+	end
+
+end
+//[cf]
+//[of]:FreeCall
+//[c]This object is used to store a call to a definition
+//[c]
+struct ASTFreeCall : ASTExpression
+	var name	: Identifier
+	var arguments	: *ASTExpressionList
+	var block	: *ASTBlockClosure
+end
+//[cf]
+//[of]:ContextCall
+//[c]This object is used to store a call to a definition
+//[c]
+struct ASTContextCall : ASTFreeCall
+	var context	: *ASTExpression
+end
+//[cf]
+//[of]:Unary
+struct ASTUnary : ASTExpression
+	var argument	: *ASTExpression
+end
+//[cf]
+//[of]:Binary
+struct ASTBinary : ASTExpression
+	var argument1	: *ASTExpression
+	var argument2	: *ASTExpression
+end
+//[cf]
+//[of]:Array
+struct ASTArray : ASTExpression
+	var arguments	: *ASTExpressionList
+end
+//[cf]
+//[of]:FunctionType
+//[c]This object is used to store a function type
+//[c]
+struct ASTFunctionType : ASTExpression
+	var parameters	: *ASTExpressionList	// input types
+	var returnTypes	: *ASTExpressionList	// output types
+	var callingConvention	: CallingConvention	// default, cdecl or stdcall
+end
+//[cf]
+//[of]:ArrayType
+struct ASTArrayType : ASTExpression
+	var cellType	: *ASTExpression	// The cell type
+	var arraySize	: *ASTExpression	// The array size or nil
+end
+//[cf]
+//[of]:FunctionReference
+//[c]This object is used to store a reference to a function
+//[c]
+struct ASTFunctionReference : ASTExpression
+	var name	: Identifier	// The name of the function
+	var context	: *ASTExpression	// The type of a contextual definition or nil for a global definition
+	var types	: *ASTExpressionList	// The list of types
+end
+//[cf]
+//[of]:Integer
+//[c]This object is used to store a literal integer
+//[c]
+struct ASTInteger : ASTExpression
+	var integer	: Uint64
+end
+//[cf]
+//[of]:String
+//[c]This object is used to store a literal string
+//[c]
+struct ASTString : ASTExpression
+	var string	: String8
+end
+//[cf]
+//[of]:SymbolName
+//[c]This object is used to store a symbol
+//[c]
+struct ASTSymbolName : ASTExpression
+	var symbol	: Identifier
+end
+//[cf]
+//[of]:Offset
+struct ASTOffset : ASTExpression
+	var type	: *ASTExpression
+	var name	: Identifier
+end
+//[cf]
+//[of]:Cond
+struct ASTCond : ASTExpression
+	var condition	: *ASTExpression
+	var arguments1	: *ASTExpressionList
+	var arguments2	: *ASTExpressionList
+end
+//[cf]
+//[of]:BlockClosure
+struct ASTBlockClosure
+	var parameters	: *ASTIdList	// The arguments
+	var instructions	: *ASTInstructionList	// The inline block (source used by yield)
+end
+//[cf]
+//[cf]
+//[of]:Lists
+const ASTElementList	= Collection (ASTElement)
+const ASTImportList	= Collection (ASTImport)
+const ASTExternFunctionList	= Collection (ASTExternFunction)
+const ASTGlobalVariableList	= Collection (ASTGlobalVariables)
+const ASTAliasList	= Collection (ASTAlias)
+const ASTFunctionList	= Collection (ASTFunction)
+const ASTRuleList	= Collection (ASTRule)
+const ASTChoiceList	= Collection (ASTChoice)
+const ASTInstructionList	= Collection (ASTInstruction)
+const ASTExpressionList	= Collection (ASTExpression)
+const ASTParameterList	= Collection (ASTParameter)
+const ASTSymbolList	= Collection (ASTSymbol)
+const ASTIdList	= Collection (ASTId)
+//[cf]
+//[of]:Utils
+//[of]:Id
+struct ASTId : Location
+	var nextSibling	: *ASTId
+	var name	: Identifier
+end
+//[cf]
+//[of]:Location
+struct Location
+	var line	: LineNumber
+end
+//[cf]
+//[of]:DirectiveSet
+struct DirectiveSet
+	var visibility	: Visibility
+	var namingConvention	: NamingConvention
+	var callingConvention	: CallingConvention
+	var entry	: Bool
+	var skip	: Bool
+	var mustCheck	: Bool
+
+	function initializeFrom (src: *DirectiveSet)
+		self visibility	= src visibility
+		self namingConvention	= src namingConvention
+		self callingConvention	= src callingConvention
+		self entry	= src entry
+		self skip	= src skip
+		self mustCheck	= src mustCheck
+	end
+
+end
+//[cf]
+//[cf]
+
+.private
+import "commons"
+import "std"

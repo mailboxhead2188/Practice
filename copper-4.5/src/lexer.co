@@ -1,0 +1,604 @@
+//[of]:TokenStream
+struct TokenStream
+
+	var defines	: *DefineDictionary	// command line defines
+	var line	: LineNumber	// current line number
+
+	// The current lexical unit
+	var token	: Token
+	var string	: String8
+	var integer	: Uint64
+	var symbol	: Identifier
+
+	// Private
+	var pool	: *MemoryPool	// Memory pool to store lexemes
+	var identifiers	: *IdentifierDictionary	// The identifiers
+	var beginningOfLine	: String8	// Pointer to the beginning of the current line
+	var p	: String8	// Pointer to the next character
+	var id	: String8	// Buffer to store id -- this is here only to avoid big buffer on stack
+	var file	: String	// The argument to pass to the error function
+	var errorReporter	: *ErrorReporter	// The object to report an error
+
+//[of]:	initialize - release
+//[of]:initialize
+function initialize (	pool	: *MemoryPool, 
+	s	: String8, 
+	defines	: *DefineDictionary, 
+	identifiers	: *IdentifierDictionary,
+	file	: String,
+	errorReporter	: *ErrorReporter	 )
+
+	self pool	= pool
+	self defines	= defines
+	self identifiers	= identifiers
+	self file	= file
+	self errorReporter	= errorReporter
+	self p	= s
+	self beginningOfLine	= s
+	self line	= 1
+	self token	= 'eof
+	self string	= nil
+	self integer	= 0
+	self id	= Char8 allocateArray (maxStringConstantSize + 1) downcast (String8)
+
+	var i = Size : 0
+	while i < Token keywordCount
+		var k = Token keywords [i]
+		var slot = self identifiers get (k name)
+		slot token = k token
+		i ++
+	end
+
+	// Read the first token
+	self nextToken
+
+end
+//[cf]
+//[of]:release
+function release
+	Char8 freeArray (self id, maxStringConstantSize + 1)
+end
+//[cf]
+//[cf]
+//[of]:	input
+//[of]:nextToken
+//[c]Get a token from the stream
+//[c]
+function nextToken
+
+	var p = self p
+	repeat
+		var c = p []
+		p ++
+		switch c
+//[of]:		case \\0
+	case 0
+		self token = 'eof
+		return
+//[cf]
+//[of]:		case \\r
+	case 'cr
+		if p [] == 'lf
+			p ++
+		end
+		self line ++
+		self beginningOfLine = p
+		self token = 'br
+		self p = p
+		return
+//[cf]
+//[of]:		case \\n
+	case 'lf
+		self line ++
+		self beginningOfLine = p
+		self token = 'br
+		self p = p
+		return
+//[cf]
+//[of]:		case 'tab, 'space
+	case 'tab, 'space
+		var c = p []
+		while c == 'space or c == 'tab
+			p ++
+			c = p []
+		end
+//[cf]
+//[of]:		case [0-9]
+	case $0, $1, $2, $3, $4, $5, $6, $7, $8, $9
+
+		var value, endc = (p - 1) decimalToUnsigned64
+		if endc <> p - 1
+			p = endc
+		end
+		self token = 'integer
+		self integer = value
+		self p = p
+		return
+//[cf]
+//[of]:		case [_a-zA-Z]
+	case $_,
+		$a, $b, $c, $d, $e, $f, $g, $h, $i, $j, $k, $l, $m, 
+		$n, $o, $p, $q, $r, $s, $t, $u, $v, $w, $x, $y, $z,
+		$A, $B, $C, $D, $E, $F, $G, $H, $I, $J, $K, $L, $M, 
+		$N, $O, $P, $Q, $R, $S, $T, $U, $V, $W, $X, $Y, $Z
+		
+		var s = p - 1
+		var hash	= Size : 0xA5A5A5A5
+		hash = (hash >> 1) + (c hash << 24)
+		var d = p []
+		while d isIdentifierChar
+			hash = (hash >> 1) + (d hash << 24)
+			p ++
+			d = p []
+		end
+		var len = p ~ s
+		var slot = self identifiers lookup (s, len, hash)
+		self token = slot token
+		self symbol = slot name
+		self p = p
+		return
+//[cf]
+//[of]:		case $"
+	case $"
+		var buf	: [maxStringConstantSize + 1] Char8
+		var q	= buf
+		var limit	= buf + maxStringConstantSize
+		
+		repeat
+			var c = p []
+			p ++
+			if c == $"
+				break
+			end
+
+			// Check for unexpected end of file in string constant
+			if c isNul
+				self error (p - 1, 'unexpected_eof_in_string)
+				return
+			end
+			
+			// Check for unexpected end of line in string constant
+			if c == 'lf
+				self error (p - 1, 'unexpected_eol_in_string)
+				return
+			end
+			
+			// Check for string length
+			if q == limit
+				self error (p - 1, 'string_too_long)
+				return
+			end
+			
+			if c == $\
+				c = p []
+				p ++
+				
+				// Check for unexpected end of file in string constant
+				if c isNul
+					self error (p - 1, 'unexpected_eof_in_string)
+					return
+				end
+				
+				switch c 
+				case $(
+					// Read the name
+					var s = self id
+					var n = String8Size : 0
+					repeat
+						c = p []
+						p ++
+						if c == 0
+							self error (p - 1, 'unexpected_eof_in_string)
+							return
+						elsif c == 'lf
+							self error (p - 1, 'unexpected_eol_in_string)
+							return
+						elsif c == $)
+							break
+						end
+						if n == maxStringConstantSize
+							self error (p - 1, 'string_too_long)
+							return
+						end
+						s [] = c
+						s ++
+					end
+					s [] = 0
+					
+					// Find the definition
+					var value = self defines [self id]
+					if value isNil
+						value = ""
+					end
+					
+					// Add the value to the string
+					var v = value
+					repeat
+						var c = v []
+						v ++
+						if c == 0
+							break
+						end
+						// Check for string length
+						if q == limit
+							self error (p - 1, 'string_too_long)
+							return
+						end
+						q [] = c
+						q ++
+					end
+				case $a
+					q [] = 'bel
+					q ++
+				case $b
+					q [] = 'bs
+					q ++
+				case $f
+					q [] = 'ff
+					q ++
+				case $n
+					q [] = 'lf
+					q ++
+				case $r
+					q [] = 'cr
+					q ++
+				case $t
+					q [] = 'tab
+					q ++
+				case $v
+					q [] = 'vt
+					q ++
+				else
+					q [] = c
+					q ++
+				end
+			else
+				q [] = c
+				q ++
+			end
+		end
+		
+		q [] = 'nul
+		q ++
+		
+		var len = (q ~ buf) * Char8 size
+		var persistentBuf = self pool allocateBytes (len) downcast (String8)
+		copyBytes (persistentBuf, buf, len)
+		self string = persistentBuf
+		self token = 'string
+		self p = p
+		return
+//[cf]
+//[of]:		case $$
+	case $$
+		var c = p []
+		p ++
+		
+		// Check for unexpected end of file in char constant
+		if c isNul
+			self error (p - 2, 'unexpected_eof_in_char)
+			return
+		end
+		
+		self integer = c cast (Uint64)
+		self token = 'integer
+		self p = p
+		return
+//[cf]
+//[of]:		case $,
+	case $,
+		self token = 'comma
+		self p = p
+		return
+//[cf]
+//[of]:		case $\:
+	case $:
+		self token = 'colon
+		self p = p
+		return
+//[cf]
+//[of]:		case $+
+	case $+
+		if p [] == $+
+			self token = 'assignInc
+			p ++
+		elsif p [] == $=
+			self token = 'assignAdd
+			p ++
+		else
+			self token = 'add
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $-
+	case $-
+		if p [] == $>
+			self token = 'to
+			p ++
+		elsif p [] == $-
+			self token = 'assignDec
+			p ++
+		elsif p [] == $=
+			self token = 'assignSub
+			p ++
+		else
+			self token = 'sub
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $>
+	case $>
+		if p [] == $=
+			self token = 'ge
+			p ++
+		elsif p [] == $>
+			p ++
+			if p[] == $=
+				self token = 'assignShr
+				p ++
+			else
+				self token = 'shr
+			end
+		else
+			self token = 'gt
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $<
+	case $<
+		if p [] == $=
+			self token = 'le
+			p ++
+		elsif p [] == $>
+			self token = 'ne
+			p ++
+		elsif p [] == $<
+			p ++
+			if p [] == $=
+				self token = 'assignShl
+				p ++
+			else
+				self token = 'shl
+			end
+		else
+			self token = 'lt
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $=
+	case $=
+		if p[] == $=
+			self token = 'eq
+			p ++
+		else
+			self token = 'assign
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $*
+	case $*
+		if p [] == $=
+			self token = 'assignMul
+			p ++
+		else
+			self token = 'mul
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $/
+	case $/
+		if p [] == $/
+			// skip the line
+			p ++
+			var c = p []
+			while c <> 'nul and c <> 'cr and c <> 'lf
+				p ++
+				c = p []
+			end
+		elsif p [] == $*
+			p ++
+			var c = p []
+			repeat
+				if c == $* and p [1] == $/
+					p += 2
+					break
+				elsif c isNul
+					break
+				elsif c == 'cr
+					p ++
+					c = p []
+					if c == 'lf
+						p ++
+						c = p []
+					end
+					self line ++
+					self beginningOfLine = p
+				elsif c == 'lf
+					p ++
+					c = p []
+					self line ++
+					self beginningOfLine = p
+				else
+					p ++
+					c = p []
+				end
+			end
+		
+		elsif p [] == $=
+			self token = 'assignDiv
+			p ++
+			self p = p
+			return
+		else
+			self token = 'div
+			self p = p
+			return
+		end
+//[cf]
+//[of]:		case $%
+	case $%
+		if p [] == $=
+			self token = 'assignMod
+			p ++
+		else
+			self token = 'mod
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $(
+	case $(
+		self token = 'lparen
+		self p = p
+		return
+//[cf]
+//[of]:		case $)
+	case $)
+		self token = 'rparen
+		self p = p
+		return
+//[cf]
+//[of]:		case $[
+	case $[
+		self token = 'lbrac
+		self p = p
+		return
+//[cf]
+//[of]:		case $]
+	case $]
+		self token = 'rbrac
+		self p = p
+		return
+//[cf]
+//[of]:		case ${
+	case ${
+		self token = 'lbrace
+		self p = p
+		return
+//[cf]
+//[of]:		case $}
+	case $}
+		self token = 'rbrace
+		self p = p
+		return
+//[cf]
+//[of]:		case $.
+	case $.
+		if p[] == $. and p[1] == $.
+			self token = 'ellipsis
+			p += 2
+		elsif p [] isIdentifierFirstChar
+			self token = 'point
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $&
+	case $&
+		if p [] == $=
+			self token = 'assignAnd
+			p ++
+		else
+			self token = 'and
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $|
+	case $|
+		if p [] == $=
+			self token = 'assignOr
+			p ++
+		else
+			self token = 'or
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $^
+	case $^
+		if p [] == $=
+			self token = 'assignXor
+			p ++
+		else
+			self token = 'xor
+		end
+		self p = p
+		return
+//[cf]
+//[of]:		case $@
+	case $@
+		self token = 'at
+		self p = p
+		return
+//[cf]
+//[of]:		case $'
+	case $'
+		var s = p
+		var hash	= Size : 0xA5A5A5A5
+		var d = p []
+		while d isIdentifierChar
+			hash = (hash >> 1) + (d hash << 24)
+			p ++
+			d = p []
+		end
+		var len = p ~ s
+		var slot = self identifiers lookup (s, len, hash)
+		self token = 'symbol
+		self symbol = slot name
+		self p = p
+		return
+//[cf]
+//[of]:		case $~
+	case $~
+		self token = 'dist
+		self p = p
+		return
+//[cf]
+		else
+			self integer = p[-1] cast (Uint64)
+			self error (p - 1, 'invalid_token)
+			return
+		end
+	end
+end
+//[cf]
+//[cf]
+//[of]:	private
+//[of]:constants
+static stype ErrorMessage : String
+	'unexpected_eof_in_string	= "unexpected end of file in string"
+	'unexpected_eol_in_string	= "unexpected end of line in string"
+	'string_too_long	= "string too long"
+	'unexpected_eof_in_char	= "unexpected end of file in character"
+	'invalid_escape_char	= "invalid escape character"
+	'invalid_token	= "invalid character"
+end
+
+static const maxStringConstantSize = String8Size : 2048
+
+//[cf]
+//[of]:error
+function error (p: String8, msg: ErrorMessage)
+
+	self p	= p
+	self token	= 'invalid
+	self errorReporter reportError (self file, self line, msg)
+
+end
+//[cf]
+//[cf]
+
+end
+//[cf]
+
+.private
+import "data/token"
+import "commons"
+import "std"
